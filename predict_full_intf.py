@@ -1,0 +1,153 @@
+import torch
+import torch.nn.functional as F
+from tqdm import tqdm
+
+from dice_score import multiclass_dice_coeff, dice_coeff
+
+import numpy as np
+from pathlib import Path
+
+from affine import Affine
+import matplotlib.pyplot as plt
+
+import rasterio
+from rasterio.features import shapes
+
+import rasterio.features
+from shapely.geometry import shape
+
+import geopandas as gpd
+from unet import *
+import logging
+
+def get_pred_args():
+    import argparse
+    parser = argparse.ArgumentParser(description='Prepare patches of intrfrgrm data')
+    parser.add_argument('--full_intf_dir',  type=str, default='./', help='full interferogram path')
+    parser.add_argument('--input_patch_dir',  type=str, default='./', help='patches inputs')
+    parser.add_argument('--plot_data',  type=bool, default=False)
+    parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
+    parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
+    parser.add_argument('--intf_list', type=str, help='a list of intf ids divided by comma')
+
+    parser.add_argument('--model', '-m', default='models/checkpoint_epoch28.pth', metavar='FILE',
+                        help='Specify the file in which the model is stored')
+    parser.add_argument('--output', '-o', metavar='OUTPUT', nargs='+', help='Filenames of output images')
+    parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
+    parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
+                        help='Minimum probability value to consider a mask pixel white')
+    parser.add_argument('--scale', '-s', type=float, default=1,
+                        help='Scale factor for the input images')
+    parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
+    parser.add_argument('--classes', '-c', type=int, default=1, help='Number of classes')
+    return parser.parse_args()
+
+if __name__ == '__main__':
+    plt.rcParams['backend'] = 'Qt5Agg'
+
+    args = get_pred_args()
+    intf_list = args.intf_list.split(',')
+    net = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info(f'Loading model {args.model}')
+    logging.info(f'Using device {device}')
+
+    net.to(device=device)
+    state_dict = torch.load(args.model, map_location=device)
+    mask_values = state_dict.pop('mask_values', [0, 1])
+    net.load_state_dict(state_dict)
+    net.eval()
+    logging.info('Model loaded!')
+
+    patch_H, patch_W = args.patch_size
+    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
+    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
+    for intf in intf_list:
+        full_intf_file = [file for file in Path(args.full_intf_dir).glob('*.unw') if file.name[9:17] == intf[:8] and file.name[25:33] == intf[9:]][0].name
+        with open(args.full_intf_dir + full_intf_file + '.ers') as f:
+            for line in f:
+                if 'NrOfLines' in line:
+                    NLINES = int(line.strip().split()[-1])
+                elif 'NrOfCellsPerLine' in line:
+                    NCELLS = int(line.strip().split()[-1])
+                if 'ByteOrder' in line:
+                    byte_order = line.strip().split()[-1]
+                if 'Eastings' in line:
+                    x0 = float(line.strip().split()[-1])
+                if 'Northings' in line:
+                    y0 = float(line.strip().split()[-1])
+
+        full_intf_data = np.fromfile(args.full_intf_dir  + full_intf_file, dtype=np.float32, count=-1, sep='', offset=0).reshape(
+            NLINES, NCELLS)[:,4000:8500]
+        if byte_order == 'MSBFirst':
+            full_intf_data = full_intf_data.byteswap().newbyteorder('<')
+
+        data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W) +'.npy'
+        mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W) +'.npy'
+        data_path = data_dir + '/' + data_file_name
+        mask_path = mask_dir + '/' + mask_file_name
+        data = np.load(data_path)
+        data = (data + np.pi) / 2 * np.pi
+        mask = np.load(mask_path)
+        assert data.ndim == 4 and mask.ndim == 4, "number of input dims should be 4 got data: {} mask: {} instead".format(data.ndim,mask.ndim)
+        reconstructed_intf = np.zeros((data.shape[0] * patch_H // 2 + patch_H // 2,data.shape[1] * patch_W // 2 + patch_W // 2))
+        reconstructed_mask = np.zeros((data.shape[0] * patch_H // 2 + patch_H // 2,data.shape[1] * patch_W // 2 + patch_W // 2))
+        reconstructed_pred = np.zeros((data.shape[0] * patch_H // 2 + patch_H // 2,data.shape[1] * patch_W // 2 + patch_W // 2))
+
+        for i in range(data.shape[0]):
+            print(i)
+            for j in range(data.shape[1]):
+                reconstructed_intf[i * patch_H//2 : i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += data[i,j]/2
+                reconstructed_mask[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += mask[i, j]/2
+                #if mask[i,j].any()!=0:
+                image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+                pred = net(image)
+                pred = (F.sigmoid(pred) > 0.5).float()
+                pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
+
+
+                reconstructed_pred[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += pred/2
+
+
+                    # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
+                    # ax1.imshow(data[i,j])
+                    # ax2.imshow(mask[i,j])
+                    # ax3.imshow(pred)
+                    # plt.show()
+        reconstructed_pred = np.where(reconstructed_pred > 0, 1, 0)
+        print("reconstructed: {}, {}".format(reconstructed_intf.shape,reconstructed_mask.shape))
+        fig, (ax1, ax2,ax3,ax4) = plt.subplots(1, 4, figsize=(10,5))
+
+        ax1.imshow(full_intf_data)
+        ax1.set_title('Orig Image')
+
+        ax2.imshow(reconstructed_intf)
+        ax2.set_title('Reconstructed Image')
+        ax3.imshow(reconstructed_mask)
+        ax3.set_title('Reconstructed True mask')
+        ax4.imshow(reconstructed_pred)
+        ax4.set_title('pred mask')
+        def on_xlims_change(axes):
+            for ax in (ax1, ax2, ax3,ax4):
+                if ax != axes:
+                    ax.set_xlim(axes.get_xlim())
+
+
+        def on_ylims_change(axes):
+            for ax in (ax1, ax2, ax3,ax4):
+                if ax != axes:
+                    ax.set_ylim(axes.get_ylim())
+
+
+        # Connect the events
+        ax1.callbacks.connect('xlim_changed', on_xlims_change)
+        ax1.callbacks.connect('ylim_changed', on_ylims_change)
+
+        # Show the plot
+        plt.show()
+
+
+
+
+
