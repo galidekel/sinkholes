@@ -116,7 +116,8 @@ if __name__ == '__main__':
                     # ax3.imshow(pred)
                     # plt.show()
         reconstructed_pred = np.where(reconstructed_pred > 0, 1, 0)
-        print("reconstructed: {}, {}".format(reconstructed_intf.shape,reconstructed_mask.shape))
+
+
         fig, (ax1, ax2,ax3,ax4) = plt.subplots(1, 4, figsize=(10,5))
 
         ax1.imshow(full_intf_data)
