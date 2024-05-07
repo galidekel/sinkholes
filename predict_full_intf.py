@@ -44,7 +44,7 @@ def get_pred_args():
 
 if __name__ == '__main__':
     plt.rcParams['backend'] = 'Qt5Agg'
-    print('GIT')
+    print('GIT test')
     args = get_pred_args()
     intf_list = args.intf_list.split(',')
     net = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
