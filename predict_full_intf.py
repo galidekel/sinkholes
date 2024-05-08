@@ -79,7 +79,7 @@ if __name__ == '__main__':
     if args.intf_list is not None:
         intf_list = args.intf_list.split(',')
     else:
-        intf_list = [file[13:30] for file in listdir(data_dir)]
+        intf_list = [file[13:30] for file in listdir(data_dir) if 'nonz' not in file]
 
     for intf in intf_list:
 
@@ -141,9 +141,9 @@ if __name__ == '__main__':
             polygons.append(shape(geom))
 
         polygons_gpd = gpd.GeoDataFrame(geometry=polygons)
-        np.save(args.output_path + '_' + intf +'_pred', reconstructed_pred)
-        np.save(args.output_path + '_' + intf +'_image', reconstructed_intf)
-        np.save(args.output_path + '_' + intf +'_gt', reconstructed_mask)
+        np.save(args.output_path  + intf +'_pred', reconstructed_pred)
+        np.save(args.output_path  + intf +'_image', reconstructed_intf)
+        np.save(args.output_path  + intf +'_gt', reconstructed_mask)
 
 
 
