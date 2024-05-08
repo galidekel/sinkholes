@@ -42,7 +42,7 @@ def get_pred_args():
 
     parser.add_argument('--model', '-m', default='models/checkpoint_epoch150.pth', metavar='FILE',
                         help='Specify the file in which the model is stored')
-    parser.add_argument('--output_path', default = './pred_outputs')
+    parser.add_argument('--output_path', default = './pred_outputs/')
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
     parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
                         help='Minimum probability value to consider a mask pixel white')
