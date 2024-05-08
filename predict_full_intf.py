@@ -18,7 +18,17 @@ from shapely.geometry import shape
 
 import geopandas as gpd
 from unet import *
+
+from os import listdir
+
 import logging
+
+def str2bool(arg):
+    if arg.lower() == 'true':
+        arg = True
+    else:
+        arg = False
+    return arg
 
 def get_pred_args():
     import argparse
@@ -28,11 +38,11 @@ def get_pred_args():
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
-    parser.add_argument('--intf_list', type=str, help='a list of intf ids divided by comma')
+    parser.add_argument('--intf_list', type=str, default = None, help='a list of intf ids divided by comma')
 
-    parser.add_argument('--model', '-m', default='models/checkpoint_epoch28.pth', metavar='FILE',
+    parser.add_argument('--model', '-m', default='models/checkpoint_epoch150.pth', metavar='FILE',
                         help='Specify the file in which the model is stored')
-    parser.add_argument('--output', '-o', metavar='OUTPUT', nargs='+', help='Filenames of output images')
+    parser.add_argument('--output_path', default = './pred_outputs')
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
     parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
                         help='Minimum probability value to consider a mask pixel white')
@@ -46,7 +56,9 @@ if __name__ == '__main__':
     plt.rcParams['backend'] = 'Qt5Agg'
 
     args = get_pred_args()
-    intf_list = args.intf_list.split(',')
+    args.eleven_days_diff = str2bool(args.eleven_days_diff)
+
+
     net = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -63,26 +75,34 @@ if __name__ == '__main__':
     patch_H, patch_W = args.patch_size
     data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
     mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
+
+    if args.intf_list is not None:
+        intf_list = args.intf_list.split(',')
+    else:
+        intf_list = [file[13:30] for file in listdir(data_dir)]
+
     for intf in intf_list:
-        full_intf_file = [file for file in Path(args.full_intf_dir).glob('*.unw') if file.name[9:17] == intf[:8] and file.name[25:33] == intf[9:]][0].name
-        with open(args.full_intf_dir + full_intf_file + '.ers') as f:
-            for line in f:
-                if 'NrOfLines' in line:
-                    NLINES = int(line.strip().split()[-1])
-                elif 'NrOfCellsPerLine' in line:
-                    NCELLS = int(line.strip().split()[-1])
-                if 'ByteOrder' in line:
-                    byte_order = line.strip().split()[-1]
-                if 'Eastings' in line:
-                    x0 = float(line.strip().split()[-1])
-                if 'Northings' in line:
-                    y0 = float(line.strip().split()[-1])
 
-        full_intf_data = np.fromfile(args.full_intf_dir  + full_intf_file, dtype=np.float32, count=-1, sep='', offset=0).reshape(
-            NLINES, NCELLS)[:,4000:8500]
-        if byte_order == 'MSBFirst':
-            full_intf_data = full_intf_data.byteswap().newbyteorder('<')
-
+        ## uncomment if we want to compare to original intf
+        # full_intf_file = [file for file in Path(args.full_intf_dir).glob('*.unw') if file.name[9:17] == intf[:8] and file.name[25:33] == intf[9:]][0].name
+        # with open(args.full_intf_dir + full_intf_file + '.ers') as f:
+        #     for line in f:
+        #         if 'NrOfLines' in line:
+        #             NLINES = int(line.strip().split()[-1])
+        #         elif 'NrOfCellsPerLine' in line:
+        #             NCELLS = int(line.strip().split()[-1])
+        #         if 'ByteOrder' in line:
+        #             byte_order = line.strip().split()[-1]
+        #         if 'Eastings' in line:
+        #             x0 = float(line.strip().split()[-1])
+        #         if 'Northings' in line:
+        #             y0 = float(line.strip().split()[-1])
+        #
+        # full_intf_data = np.fromfile(args.full_intf_dir  + full_intf_file, dtype=np.float32, count=-1, sep='', offset=0).reshape(
+        #     NLINES, NCELLS)[:,4000:8500]
+        # if byte_order == 'MSBFirst':
+        #     full_intf_data = full_intf_data.byteswap().newbyteorder('<')
+        ##
         data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W) +'.npy'
         mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W) +'.npy'
         data_path = data_dir + '/' + data_file_name
@@ -109,33 +129,44 @@ if __name__ == '__main__':
 
                 reconstructed_pred[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += pred/2
 
-
                     # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
                     # ax1.imshow(data[i,j])
                     # ax2.imshow(mask[i,j])
                     # ax3.imshow(pred)
                     # plt.show()
-        reconstructed_pred = np.where(reconstructed_pred > 0, 1, 0)
-        print("reconstructed: {}, {}".format(reconstructed_intf.shape,reconstructed_mask.shape))
-        fig, (ax1, ax2,ax3,ax4) = plt.subplots(1, 4, figsize=(10,5))
+        reconstructed_pred = np.where(reconstructed_pred > 0, 1, 0).astype(np.float32)
+        transform = Affine.identity()  # Create an identity transform
+        polygons = []
+        for geom, val in rasterio.features.shapes(reconstructed_pred, transform=transform):
+            polygons.append(shape(geom))
 
-        ax1.imshow(full_intf_data)
-        ax1.set_title('Orig Image')
+        polygons_gpd = gpd.GeoDataFrame(geometry=polygons)
+        np.save(args.output_path + '_' + intf +'_pred', reconstructed_pred)
+        np.save(args.output_path + '_' + intf +'_image', reconstructed_intf)
+        np.save(args.output_path + '_' + intf +'_gt', reconstructed_mask)
 
-        ax2.imshow(reconstructed_intf)
-        ax2.set_title('Reconstructed Image')
-        ax3.imshow(reconstructed_mask)
-        ax3.set_title('Reconstructed True mask')
-        ax4.imshow(reconstructed_pred)
-        ax4.set_title('pred mask')
+
+
+
+        fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
+
+        # ax1.imshow(full_intf_data)
+        # ax1.set_title('Orig Image')
+
+        ax1.imshow(reconstructed_intf)
+        ax1.set_title('Reconstructed Image')
+        ax2.imshow(reconstructed_mask)
+        ax2.set_title('Reconstructed True mask')
+        ax3.imshow(reconstructed_pred)
+        ax3.set_title('pred mask')
         def on_xlims_change(axes):
-            for ax in (ax1, ax2, ax3,ax4):
+            for ax in (ax1, ax2, ax3):
                 if ax != axes:
                     ax.set_xlim(axes.get_xlim())
 
 
         def on_ylims_change(axes):
-            for ax in (ax1, ax2, ax3,ax4):
+            for ax in (ax1, ax2, ax3):
                 if ax != axes:
                     ax.set_ylim(axes.get_ylim())
 
