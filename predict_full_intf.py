@@ -148,37 +148,37 @@ if __name__ == '__main__':
 
 
 
-        fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
-
-        # ax1.imshow(full_intf_data)
-        # ax1.set_title('Orig Image')
-
-        ax1.imshow(reconstructed_intf)
-        ax1.set_title('Reconstructed Image')
-        ax2.imshow(reconstructed_mask)
-        ax2.set_title('Reconstructed True mask')
-        ax3.imshow(reconstructed_pred)
-        ax3.set_title('pred mask')
-        def on_xlims_change(axes):
-            for ax in (ax1, ax2, ax3):
-                if ax != axes:
-                    ax.set_xlim(axes.get_xlim())
-
-
-        def on_ylims_change(axes):
-            for ax in (ax1, ax2, ax3):
-                if ax != axes:
-                    ax.set_ylim(axes.get_ylim())
-
-
-        # Connect the events
-        ax1.callbacks.connect('xlim_changed', on_xlims_change)
-        ax1.callbacks.connect('ylim_changed', on_ylims_change)
-
-        # Show the plot
-        plt.show()
-
-
+        # fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
+        #
+        # # ax1.imshow(full_intf_data)
+        # # ax1.set_title('Orig Image')
+        #
+        # ax1.imshow(reconstructed_intf)
+        # ax1.set_title('Reconstructed Image')
+        # ax2.imshow(reconstructed_mask)
+        # ax2.set_title('Reconstructed True mask')
+        # ax3.imshow(reconstructed_pred)
+        # ax3.set_title('pred mask')
+        # def on_xlims_change(axes):
+        #     for ax in (ax1, ax2, ax3):
+        #         if ax != axes:
+        #             ax.set_xlim(axes.get_xlim())
+        #
+        #
+        # def on_ylims_change(axes):
+        #     for ax in (ax1, ax2, ax3):
+        #         if ax != axes:
+        #             ax.set_ylim(axes.get_ylim())
+        #
+        #
+        # # Connect the events
+        # ax1.callbacks.connect('xlim_changed', on_xlims_change)
+        # ax1.callbacks.connect('ylim_changed', on_ylims_change)
+        #
+        # # Show the plot
+        # plt.show()
+        #
+        #
 
 
 
