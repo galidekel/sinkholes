@@ -120,20 +120,20 @@ if __name__ == '__main__':
             for j in range(data.shape[1]):
                 reconstructed_intf[i * patch_H//2 : i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += data[i,j]/4
                 reconstructed_mask[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += mask[i, j]/4
-                if  np.any(data[i,j]>5):
-                    image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
-                    pred = net(image)
-                    pred = (F.sigmoid(pred) > 0.5).float()
-                    pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
+                # if  np.any(data[i,j]>5):
+                image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+                pred = net(image)
+                pred = (F.sigmoid(pred) > 0.5).float()
+                pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
 
 
-                    reconstructed_pred[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += pred/4
+                reconstructed_pred[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += pred/4
 
-                    fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
-                    ax1.imshow(data[i,j])
-                    ax2.imshow(mask[i,j])
-                    ax3.imshow(pred)
-                    plt.show()
+                    # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
+                    # ax1.imshow(data[i,j])
+                    # ax2.imshow(mask[i,j])
+                    # ax3.imshow(pred)
+                    # plt.show()
         reconstructed_pred = np.where(reconstructed_pred > 0, 1, 0).astype(np.float32)
         transform = Affine.identity()  # Create an identity transform
         polygons = []
