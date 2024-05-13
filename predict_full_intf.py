@@ -134,7 +134,7 @@ if __name__ == '__main__':
                     # ax2.imshow(mask[i,j])
                     # ax3.imshow(pred)
                     # plt.show()
-        reconstructed_pred = np.where(reconstructed_pred > 0.5, 1, 0).astype(np.float32)
+        reconstructed_pred = np.where(reconstructed_pred > 0.25, 1, 0).astype(np.float32)
         transform = Affine.identity()  # Create an identity transform
         polygons = []
         for geom, val in rasterio.features.shapes(reconstructed_pred, transform=transform):
