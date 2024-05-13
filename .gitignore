@@ -1,2 +1,4 @@
 /.venv/
 /.venv/bin/
+*.unw
+*.unw.ers
