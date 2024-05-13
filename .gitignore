@@ -2,3 +2,5 @@
 /.venv/bin/
 *.unw
 *.unw.ers
+*npy
+*xml
