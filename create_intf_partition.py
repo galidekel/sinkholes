@@ -17,7 +17,7 @@ def str2bool(arg):
     return arg
 def get_args():
     parser = argparse.ArgumentParser(description='create intf partition')
-    parser.add_argument('--in_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/')
+    parser.add_argument('--in_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/')
     parser.add_argument('--eleven_days_21',  type=str, default='True')
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--val_percent',  type=int, help='validation set portion in percents', default=10)
