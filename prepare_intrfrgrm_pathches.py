@@ -42,6 +42,7 @@ def get_args():
     parser.add_argument('--gt_polygon_file_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20231001.shp', help='')
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
+    parser.add_argument('--strides_per_patch',type=int, default=2, help='strides per patch - 2 means half a window stride, 4 means quarter a window stride etc')
     parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
 
     return parser.parse_args()
@@ -54,8 +55,8 @@ if __name__ == '__main__':
     gdf = gpd.read_file(args.gt_polygon_file_path)
     patch_size = tuple(args.patch_size)
     patch_H, patch_W = patch_size
-    data_output_dir = args.output_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
-    mask_output_dir = args.output_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
+    data_output_dir = args.output_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_11days' if args.eleven_days_diff else '')
+    mask_output_dir = args.output_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_11days' if args.eleven_days_diff else '')
     for item in [data_output_dir, mask_output_dir]:
         if not os.path.exists(item):
             # If it doesn't exist, create it
@@ -161,11 +162,11 @@ if __name__ == '__main__':
             #     mask_array = src.read(1)
 
 
-            data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = sliding_window_with_stride(data,mask,patch_size,stride= (patch_size[0]//2, patch_size[1]//2))
+            data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = sliding_window_with_stride(data,mask,patch_size,stride= (patch_size[0]//args.strides_per_patch, patch_size[1]//args.strides_per_patch))
             counter_nonz = data_patches_nonz.shape[0]
             logging.info('intrfrgrm {}: number of non-zero patches: '.format(intfrgrm_name)+str(counter_nonz))
 
-            ext =  intfrgrm_name +'_H'+str(patch_H)+'_W'+str(patch_W)+'.npy'
+            ext =  intfrgrm_name +'_H'+str(patch_H)+'_W'+str(patch_W)+'_strpp'+str(args.strides_per_patch)+'.npy'
             out_file_names = ['data_patches_','mask_patches_','data_patches_nonz_','mask_patches_nonz_']
             for i,array in enumerate([data_patches,mask_patches,data_patches_nonz,mask_patches_nonz]):
                 if 'mask' in out_file_names[i]:
@@ -177,6 +178,8 @@ if __name__ == '__main__':
 
 
             #test
+                test_array = np.load(output_dir+'/'+ out_file_name)
+                logging.info('shpae of file saved: {}'.format(test_array.shape))
 
 
             if args.plot_data:
