@@ -1,0 +1,31 @@
+from os import listdir
+import argparse
+import json
+
+
+parser = argparse.ArgumentParser(description='Prepare patches of intrfrgrm data')
+
+parser.add_argument('--intf_dir', type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/')
+parser.add_argument('--out_dir', type=str, default='./')
+
+args = parser.parse_args()
+intf_dict = dict()
+for file in listdir(args.intf_dir):
+    if file.endswith('.ers'):
+        print(file)
+        with open(args.intf_dir + file, 'r') as f:
+            for line in f:
+                for line in f:
+                    if 'NrOfLines' in line:
+                        NLINES = int(line.strip().split()[-1])
+                    if 'Northings' in line:
+                        y0 = float(line.strip().split()[-1])
+                    if 'Ydimension' in line:
+                        dY = float(line.strip().split()[-1])
+
+        intfrgrm_name = file.split('.')[0][9:17] + file.split('.')[0][24:33]
+        intf_dict[intfrgrm_name] = {'north': y0, 'nlines': NLINES, 'dY' : dY}
+
+
+with open(args.out_dir + 'intf_coord.json', 'w') as json_file:
+    json.dump(intf_dict, json_file, indent=4)
