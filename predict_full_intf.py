@@ -83,7 +83,7 @@ if __name__ == '__main__':
         with open(args.valset_from_partition, 'r') as file:
             loaded_data = json.load(file)
             intf_list = loaded_data['val']
-            logging.info('test list: {}'.format(test_list))
+            logging.info('taking test intfs from partition {}. test list: {}'.format(args.valset_from_partition,intf_list))
 
     elif args.intf_list is not None:
         intf_list = args.intf_list.split(',')
