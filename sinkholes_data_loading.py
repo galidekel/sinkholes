@@ -67,15 +67,18 @@ class SubsiDataset(Dataset):
 
         if intrfrgrm_list is None:
             intrfrgrm_list = [file for file in listdir(image_dir) if ('nonz' in file and args.nonz_only and args.partition_mode!='spatial') or ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'))]
-        self.ids = [file.split('.')[0][start_intf_name:] for file in intrfrgrm_list]
+        if args.partition_mode == 'preset_by_intf':
+            self.ids = intrfrgrm_list
+        else:
+            self.ids = [file.split('.')[0][start_intf_name:start_intf_name+17] for file in intrfrgrm_list]
 
         if not self.ids:
             raise RuntimeError(f'No input file found in {image_dir}, make sure you put your images there')
         self.image_data,self.mask_data,self.index_map = [],[],[]
         for i,id in enumerate(self.ids):
             if args.partition_mode != 'spatial':
-                image_data = np.load(join(self.image_dir, pref + id + '.npy'))
-                mask_data = np.load(join(self.mask_dir, mask_pref + id +'.npy'))
+                image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) + '.npy'))
+                mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'.npy'))
                 if not args.nonz_only:
                     image_data = image_data.reshape(-1,image_data.shape[2],image_data.shape[3])
                     mask_data = mask_data.reshape(-1,mask_data.shape[2],mask_data.shape[3])
@@ -113,7 +116,7 @@ class SubsiDataset(Dataset):
 
         with Pool() as p:
             unique = list(tqdm(
-                p.imap(partial(unique_mask_values, mask_dir=self.mask_dir, mask_suffix='.npy'), self.ids),
+                p.imap(partial(unique_mask_values, mask_dir=self.mask_dir, mask_suffix='_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'.npy'), self.ids),
                 total=len(self.ids)
             ))
 
@@ -143,7 +146,7 @@ class SubsiDataset(Dataset):
             #     img = img[np.newaxis, ...]
             # else:
             #     img = img.transpose((2, 0, 1))
-            img = (img +np.pi) / 2*np.pi
+            img = (img +np.pi) / (2*np.pi)
 
 
             return img
