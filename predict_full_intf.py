@@ -85,7 +85,7 @@ if __name__ == '__main__':
             test_list = loaded_data['val']
             logging.info('test list: {}'.format(test_list))
 
-    if args.intf_list is not None:
+    elif args.intf_list is not None:
         intf_list = args.intf_list.split(',')
     else:
         intf_list = [file[13:30] for file in listdir(data_dir) if 'nonz' not in file]
