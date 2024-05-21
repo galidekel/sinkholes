@@ -36,7 +36,7 @@ def get_pred_args():
     import argparse
     parser = argparse.ArgumentParser(description='Prepare patches of intrfrgrm data')
     parser.add_argument('--full_intf_dir',  type=str, default='./', help='full interferogram path')
-    parser.add_argument('--input_patch_dir',  type=str, default='./', help='patches inputs')
+    parser.add_argument('--input_patch_dir',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='patches inputs')
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
