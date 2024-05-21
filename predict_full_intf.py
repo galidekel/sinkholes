@@ -82,7 +82,7 @@ if __name__ == '__main__':
     if args.valset_from_partition is not None:
         with open(args.valset_from_partition, 'r') as file:
             loaded_data = json.load(file)
-            test_list = loaded_data['val']
+            intf_list = loaded_data['val']
             logging.info('test list: {}'.format(test_list))
 
     elif args.intf_list is not None:
