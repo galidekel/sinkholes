@@ -219,7 +219,7 @@ def get_args():
     parser.add_argument('--nonz_only', type = str, default='True', help='train only on non zero mask patches')
     parser.add_argument('--patches_dir', type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='path to patches')
     parser.add_argument('--partition_mode', type=str, default='random_by_patch', choices=['random_by_patch', 'random_by_intf','spatial','preset_by_intf'], help='partition mode')
-    parser.add_argument('--partition_file', type=str, default=' partition_20_05_13h45.json', help=('preset partition file'))
+    parser.add_argument('--partition_file', type=str, default='partition_20_05_13h45.json', help=('preset partition file'))
 
     parser.add_argument('--train_on_11d_diff', type = str, default='True', help='train only on non zero mask patches')
     parser.add_argument('--job_name', type = str, default='', help='job name to add to output files')
