@@ -198,7 +198,7 @@ def train_model(
         if save_checkpoint:
             state_dict = model.state_dict()
             state_dict['mask_values'] = train_set.dataset.mask_values if args.partition_mode == 'random_by_patch' else train_set.mask_values
-            torch.save(state_dict, str(dir_checkpoint / 'checkpoint_epoch{}.pth'.format(epoch)))
+            torch.save(state_dict, str(dir_checkpoint / args.job_name + 'checkpoint_epoch{}.pth'.format(epoch)))
             logging.info(f'Checkpoint {epoch} saved!')
 
 
@@ -244,7 +244,8 @@ if __name__ == '__main__':
     # Configure the logging system
     logging.basicConfig(level=logging.INFO)  # Set the logging level (e.g., INFO)
     now = datetime.now().strftime("%Y-%m-%d_%H:%M")
-    outpath = './outputs/'+args.job_name + '_' + now + '/'
+    args.job_name = args.job_name + '_' + now
+    outpath = './outputs/' + args.job_name + '/'
     os.makedirs(outpath, exist_ok=True)
     # Create a FileHandler and specify the log file name
 
