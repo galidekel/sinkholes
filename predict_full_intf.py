@@ -80,7 +80,7 @@ if __name__ == '__main__':
     data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
     mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
     if args.valset_from_partition is not None:
-        with open(args.from_partition_file, 'r') as file:
+        with open(args.valset_from_partition, 'r') as file:
             loaded_data = json.load(file)
             test_list = loaded_data['val']
             logging.info('test list: {}'.format(test_list))
