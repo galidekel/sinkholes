@@ -85,7 +85,16 @@ def train_model(
         n_train = len(train_set)
         n_val = len(val_set)
         logging.info('Spatial partitioning: Val percent is ' + str(int(100*n_val/(n_train+n_val))) + '%')
-
+    elif args.partition_mode == 'preset_by_intf':
+        logging.info('Creating Dataset: preset partition by intf \n partiotion file: '+args.partition_file)
+        with open(args.partition_file, 'r') as file:
+            loaded_data = json.load(file)
+        train_list = loaded_data['train']
+        val_list = loaded_data['val']
+        train_set = SubsiDataset(args, image_dir, mask_dir, intrfrgrm_list=train_list)
+        val_set = SubsiDataset(args, image_dir, mask_dir, intrfrgrm_list=val_list)
+        n_train = len(train_set)
+        n_val = len(val_set)
 
     #     train_set, val_set = get_preset_partition()
     # 3. Create data loaders
@@ -209,7 +218,9 @@ def get_args():
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--nonz_only', type = str, default='True', help='train only on non zero mask patches')
     parser.add_argument('--patches_dir', type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='path to patches')
-    parser.add_argument('--partition_mode', type=str, default='random_by_patch', choices=['random_by_patch', 'random_by_intf','spatial'], help='partition mode')
+    parser.add_argument('--partition_mode', type=str, default='random_by_patch', choices=['random_by_patch', 'random_by_intf','spatial','preset_by_intf'], help='partition mode')
+    parser.add_argument('--partition_file', type=str, default=' partition_20_05_13h45.json', help=('preset partition file'))
+
     parser.add_argument('--train_on_11d_diff', type = str, default='True', help='train only on non zero mask patches')
     parser.add_argument('--job_name', type = str, default='', help='job name to add to output files')
     parser.add_argument('--intf_dict_path', type=str, default='./intf_coord.json', help='path to interferograms coord dict')
