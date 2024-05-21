@@ -21,6 +21,8 @@ from unet import *
 
 from os import listdir
 
+import json
+
 import logging
 
 def str2bool(arg):
@@ -50,6 +52,8 @@ def get_pred_args():
                         help='Scale factor for the input images')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
     parser.add_argument('--classes', '-c', type=int, default=1, help='Number of classes')
+    parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
+
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -75,6 +79,11 @@ if __name__ == '__main__':
     patch_H, patch_W = args.patch_size
     data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
     mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
+    if args.from_partition_file is not None:
+        with open(args.from_partition_file, 'r') as file:
+            loaded_data = json.load(file)
+            test_list = loaded_data['val']
+            logging.info('test list: {}'.format(test_list))
 
     if args.intf_list is not None:
         intf_list = args.intf_list.split(',')
