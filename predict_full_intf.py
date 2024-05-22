@@ -23,7 +23,10 @@ from os import listdir
 
 import json
 
+import os
+
 import logging
+from datetime import datetime
 
 def str2bool(arg):
     if arg.lower() == 'true':
@@ -52,14 +55,34 @@ def get_pred_args():
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
     parser.add_argument('--classes', '-c', type=int, default=1, help='Number of classes')
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
+    parser.add_argument('--job_name', type=str, default='', help='unique job name')
+
 
     return parser.parse_args()
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)  # Set the logging level (e.g., INFO)
+
     plt.rcParams['backend'] = 'Qt5Agg'
+    now = datetime.now().strftime("%m_%d_%Hh%M")
 
     args = get_pred_args()
     args.eleven_days_diff = str2bool(args.eleven_days_diff)
+    job_name = args.job_name + now
+    model_name = args.model.split('/')[1].split('.')[0]
+    output_path = 'pred_outputs/' + model_name + '/' + job_name + '/'
+    try:
+        os.makedirs(output_path)
+        logging.info(f"Directory '{output_path}' created successfully")
+    except FileExistsError:
+        logging.info(f"Directory '{output_path}' already exists")
+    except Exception as e:
+        logging.info(f"An error occurred: {e}")
+    log_file = output_path + args.job_name + '_' + now + '.log'
+    file_handler = logging.FileHandler(log_file)
+    logging.getLogger().addHandler(file_handler)
+
+    logging.info('Running job {} with model {}.pth and args: {}'.format(job_name, model_name, args))
 
 
     net = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
@@ -74,8 +97,9 @@ if __name__ == '__main__':
     net.load_state_dict(state_dict)
     net.eval()
     logging.info('Model loaded!')
-    model_name = args.model.split('/')[1]
-    output_path = './pred_outputs_' + model_name + '/'
+
+
+
     patch_H, patch_W = args.patch_size
     data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
     mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
