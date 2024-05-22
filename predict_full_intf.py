@@ -44,7 +44,6 @@ def get_pred_args():
 
     parser.add_argument('--model', '-m', default='models/checkpoint_epoch150.pth', metavar='FILE',
                         help='Specify the file in which the model is stored')
-    parser.add_argument('--output_path', default = './pred_outputs/')
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
     parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
                         help='Minimum probability value to consider a mask pixel white')
@@ -75,7 +74,8 @@ if __name__ == '__main__':
     net.load_state_dict(state_dict)
     net.eval()
     logging.info('Model loaded!')
-
+    model_name = args.model.split('/')[1]
+    output_path = './pred_outputs_' + model_name + '/'
     patch_H, patch_W = args.patch_size
     data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
     mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
@@ -150,9 +150,10 @@ if __name__ == '__main__':
             polygons.append(shape(geom))
 
         polygons_gpd = gpd.GeoDataFrame(geometry=polygons)
-        np.save(args.output_path  + intf +'_pred', reconstructed_pred)
-        np.save(args.output_path  + intf +'_image', reconstructed_intf)
-        np.save(args.output_path  + intf +'_gt', reconstructed_mask)
+        prefix = output_path  + intf + '_'+ model_name
+        np.save(prefix +'_pred', reconstructed_pred)
+        np.save(prefix +'_image', reconstructed_intf)
+        np.save(prefix +'_gt', reconstructed_mask)
 
 
 
