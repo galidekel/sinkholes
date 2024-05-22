@@ -45,7 +45,7 @@ def get_pred_args():
     parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
     parser.add_argument('--intf_list', type=str, default = None, help='a list of intf ids divided by comma')
 
-    parser.add_argument('--model', '-m', default='models/checkpoint_epoch150.pth', metavar='FILE',
+    parser.add_argument('--model', '-m', default='checkpoint_epoch150.pth', metavar='FILE',
                         help='Specify the file in which the model is stored')
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
     parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
@@ -69,7 +69,7 @@ if __name__ == '__main__':
     args = get_pred_args()
     args.eleven_days_diff = str2bool(args.eleven_days_diff)
     job_name = args.job_name + now
-    model_name = args.model.split('/')[1].split('.')[0]
+    model_name = args.model.split('.')[0]
     output_path = 'pred_outputs/' + model_name + '/' + job_name + '/'
     try:
         os.makedirs(output_path)
@@ -92,7 +92,7 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     net.to(device=device)
-    state_dict = torch.load(args.model, map_location=device)
+    state_dict = torch.load('./models/'+args.model, map_location=device)
     mask_values = state_dict.pop('mask_values', [0, 1])
     net.load_state_dict(state_dict)
     net.eval()
