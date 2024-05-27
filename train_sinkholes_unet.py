@@ -52,8 +52,8 @@ def train_model(
     patch_size = tuple(args.patch_size)
     H, W = patch_size
 
-    image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) + ('_11days' if args.train_on_11d_diff else '')
-    mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W) + ('_11days' if args.train_on_11d_diff else '')
+    image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'stpp_'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
+    mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'stpp_'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
     #
 
         #sys.exit(0)
@@ -216,6 +216,8 @@ def get_args():
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
     parser.add_argument('--classes', '-c', type=int, default=1, help='Number of classes')
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
+    parser.add_argument('--stride',  type = int, default=2, help='train on patchs with given strides per window')
+
     parser.add_argument('--nonz_only', type = str, default='True', help='train only on non zero mask patches')
     parser.add_argument('--patches_dir', type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='path to patches')
     parser.add_argument('--partition_mode', type=str, default='random_by_patch', choices=['random_by_patch', 'random_by_intf','spatial','preset_by_intf'], help='partition mode')
