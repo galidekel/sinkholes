@@ -243,7 +243,7 @@ if __name__ == '__main__':
     args.nonz_only = str2bool(args.nonz_only)
     # Configure the logging system
     logging.basicConfig(level=logging.INFO)  # Set the logging level (e.g., INFO)
-    now = datetime.now().strftime("%Y-%m-%d_%H:%M")
+    now = datetime.now().strftime("%Y-%m-%d_%Hh%M")
     args.job_name = args.job_name + '_' + now
     outpath = './outputs/' + args.job_name + '/'
     os.makedirs(outpath, exist_ok=True)
