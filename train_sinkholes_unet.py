@@ -57,6 +57,7 @@ def train_model(
     #
 
         #sys.exit(0)
+    logging.info('input patch directories: {} and {}'.format(image_dir, mask_dir))
     assert os.path.exists(image_dir) and os.path.exists(mask_dir), 'The data you are requesting does not exist, please check if you prepared it at the preparation stage'
     if args.partition_mode == 'random_by_patch':
         logging.info('Creating Dataset: Randlomly partitioning by patches')
