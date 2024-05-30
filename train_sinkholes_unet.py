@@ -52,8 +52,8 @@ def train_model(
     patch_size = tuple(args.patch_size)
     H, W = patch_size
 
-    image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'_strpp_'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
-    mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'_strpp_'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
+    image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
+    mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
     #
 
         #sys.exit(0)
