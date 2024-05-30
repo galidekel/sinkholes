@@ -1,8 +1,7 @@
 #!/bin/bash
 
 # Directory containing the files
-DIRECTORY="/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/data_patches_H200_W100_strpp2_11days
-"
+DIRECTORY="/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/data_patches_H200_W100_strpp2_11days"
 
 # String to be added
 ADD_STRING="_strpp2"
