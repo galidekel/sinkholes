@@ -22,16 +22,16 @@ for FILE in "$DIRECTORY"/*nonz*; do
       echo "Renamed $FILENAME to $NEW_FILENAME"
     fi
 
-     if [[ "$FILENAME" == *"mask_patches_2_"*"_H200_W100.npy" ]]; then
-      # Replace the old pattern with the new pattern
-      NEW_FILENAME="${FILENAME/_H200_W100.npy/_H200_W100_strpp2.npy}"
+   if [[ "$FILENAME" == *"mask_patches_2"*"_H200_W100.npy" ]]; then
+    # Replace the old pattern with the new pattern
+    NEW_FILENAME="${FILENAME/_H200_W100.npy/_H200_W100_strpp2.npy}"
 
-      # Move (rename) the file
-      mv "$FILE" "$DIRECTORY/$NEW_FILENAME"
+    # Move (rename) the file
+    mv "$FILE" "$DIRECTORY/$NEW_FILENAME"
 
-      # Output the rename action
-      echo "Renamed $FILENAME to $NEW_FILENAME"
-    fi
+    # Output the rename action
+    echo "Renamed $FILENAME to $NEW_FILENAME"
+  fi
 
 
   fi
