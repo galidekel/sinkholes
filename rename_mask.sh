@@ -1,4 +1,4 @@
-DIRECTORY="/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/data_patches_H200_W100_strpp2_11days"
+DIRECTORY="/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/mask_patches_H200_W100_strpp2_11days"
 
 
 # Loop through each file in the directory
