@@ -77,8 +77,8 @@ class SubsiDataset(Dataset):
         self.image_data,self.mask_data,self.index_map = [],[],[]
         for i,id in enumerate(self.ids):
             if args.partition_mode != 'spatial':
-                image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) + '.npy'))
-                mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'.npy'))
+                image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + '.npy'))
+                mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))
                 if not args.nonz_only:
                     image_data = image_data.reshape(-1,image_data.shape[2],image_data.shape[3])
                     mask_data = mask_data.reshape(-1,mask_data.shape[2],mask_data.shape[3])
