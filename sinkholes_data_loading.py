@@ -113,6 +113,7 @@ class SubsiDataset(Dataset):
             self.image_data.append(image_data)
             self.mask_data.append(mask_data)
             self.index_map.extend([[i,j] for j in range(len_examples)])
+            logging.info('loaded patch for intf {}'.format(id))
 
         with Pool() as p:
             unique = list(tqdm(
