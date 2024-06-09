@@ -139,7 +139,7 @@ if __name__ == '__main__':
         data_path = data_dir + '/' + data_file_name
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
-        data = (data + np.pi) / 2*np.pi
+        data = (data + np.pi) /( 2*np.pi)
         mask = np.load(mask_path)
         assert data.ndim == 4 and mask.ndim == 4, "number of input dims should be 4 got data: {} mask: {} instead".format(data.ndim,mask.ndim)
         reconstructed_intf = np.zeros((data.shape[0] * patch_H // 2 + patch_H // 2,data.shape[1] * patch_W // 2 + patch_W // 2))
