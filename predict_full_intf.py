@@ -50,10 +50,11 @@ def get_pred_args():
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
     parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
                         help='Minimum probability value to consider a mask pixel white')
-    parser.add_argument('--scale', '-s', type=float, default=1,
-                        help='Scale factor for the input images')
-    parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
-    parser.add_argument('--classes', '-c', type=int, default=1, help='Number of classes')
+    parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
+                        help='Minimum probability value to consider a mask pixel white')
+
+    parser.add_argument('--train_stride', type=int, default=2,
+                        help='Minimum probability value to consider a mask pixel white')
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
     parser.add_argument('--job_name', type=str, default='', help='unique job name')
 
@@ -101,8 +102,8 @@ if __name__ == '__main__':
 
 
     patch_H, patch_W = args.patch_size
-    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
-    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + ('_11days' if args.eleven_days_diff else '')
+    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
+    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
     if args.valset_from_partition is not None:
         with open(args.valset_from_partition, 'r') as file:
             loaded_data = json.load(file)
@@ -136,8 +137,8 @@ if __name__ == '__main__':
         # if byte_order == 'MSBFirst':
         #     full_intf_data = full_intf_data.byteswap().newbyteorder('<')
         ##
-        data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W) +'.npy'
-        mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W) +'.npy'
+        data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp'.format(args.train_stride) +'.npy'
+        mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp'.format(args.train_stride) +'.npy'
         data_path = data_dir + '/' + data_file_name
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
@@ -178,10 +179,6 @@ if __name__ == '__main__':
         np.save(prefix +'_pred', reconstructed_pred)
         np.save(prefix +'_image', reconstructed_intf)
         np.save(prefix +'_gt', reconstructed_mask)
-
-
-
-
         # fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
         #
         # # ax1.imshow(full_intf_data)
