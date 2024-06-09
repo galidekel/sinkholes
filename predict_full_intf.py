@@ -99,8 +99,8 @@ if __name__ == '__main__':
 
 
     patch_H, patch_W = args.patch_size
-    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
-    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
+    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
+    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
     if args.valset_from_partition is not None:
         with open(args.valset_from_partition, 'r') as file:
             loaded_data = json.load(file)
@@ -134,8 +134,8 @@ if __name__ == '__main__':
         # if byte_order == 'MSBFirst':
         #     full_intf_data = full_intf_data.byteswap().newbyteorder('<')
         ##
-        data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp'.format(args.train_stride) +'.npy'
-        mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp'.format(args.train_stride) +'.npy'
+        data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.train_stride) +'.npy'
+        mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.train_stride) +'.npy'
         data_path = data_dir + '/' + data_file_name
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
