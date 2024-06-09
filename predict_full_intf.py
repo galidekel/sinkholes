@@ -83,7 +83,7 @@ if __name__ == '__main__':
     logging.info('Running job {} with model {}.pth and args: {}'.format(job_name, model_name, args))
 
 
-    net = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
+    net = UNet(n_channels=1, n_classes=1, bilinear=args.bilinear)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Loading model {args.model}')
