@@ -48,13 +48,10 @@ def get_pred_args():
     parser.add_argument('--model', '-m', default='checkpoint_epoch150.pth', metavar='FILE',
                         help='Specify the file in which the model is stored')
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
-    parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
-                        help='Minimum probability value to consider a mask pixel white')
-    parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
-                        help='Minimum probability value to consider a mask pixel white')
 
-    parser.add_argument('--train_stride', type=int, default=2,
-                        help='Minimum probability value to consider a mask pixel white')
+    parser.add_argument('--train_stride', type=int, default=2)
+    parser.add_argument('--recon_th', type=int, default=0.5)
+
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
     parser.add_argument('--job_name', type=str, default='', help='unique job name')
 
@@ -168,7 +165,7 @@ if __name__ == '__main__':
                     # ax2.imshow(mask[i,j])
                     # ax3.imshow(pred)
                     # plt.show()
-        reconstructed_pred = np.where(reconstructed_pred > 0.25, 1, 0).astype(np.float32)
+        reconstructed_pred = np.where(reconstructed_pred > args.recon_th, 1, 0).astype(np.float32)
         transform = Affine.identity()  # Create an identity transform
         polygons = []
         for geom, val in rasterio.features.shapes(reconstructed_pred, transform=transform):
