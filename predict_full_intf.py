@@ -172,7 +172,7 @@ if __name__ == '__main__':
             polygons.append(shape(geom))
 
         polygons_gpd = gpd.GeoDataFrame(geometry=polygons)
-        prefix = output_path  + intf + '_'+ model_name
+        prefix = output_path  + intf
         np.save(prefix +'_pred', reconstructed_pred)
         np.save(prefix +'_image', reconstructed_intf)
         np.save(prefix +'_gt', reconstructed_mask)
