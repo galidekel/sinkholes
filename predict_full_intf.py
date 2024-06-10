@@ -50,7 +50,7 @@ def get_pred_args():
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
 
     parser.add_argument('--train_stride', type=int, default=2)
-    parser.add_argument('--recon_th', type=int, default=0.5)
+    parser.add_argument('--recon_th', type=float, default=0.5)
 
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
     parser.add_argument('--job_name', type=str, default='job', help='unique job name')
