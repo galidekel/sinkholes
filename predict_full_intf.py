@@ -53,7 +53,7 @@ def get_pred_args():
     parser.add_argument('--recon_th', type=int, default=0.5)
 
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
-    parser.add_argument('--job_name', type=str, default='', help='unique job name')
+    parser.add_argument('--job_name', type=str, default='job', help='unique job name')
 
 
     return parser.parse_args()
@@ -66,7 +66,7 @@ if __name__ == '__main__':
 
     args = get_pred_args()
     args.eleven_days_diff = str2bool(args.eleven_days_diff)
-    job_name = args.job_name + now
+    job_name = args.job_name +'_'+ now
     model_name = args.model.split('.')[0]
     output_path = 'pred_outputs/' + model_name + '/' + job_name + '/'
     try:
