@@ -49,7 +49,7 @@ def get_pred_args():
                         help='Specify the file in which the model is stored')
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
 
-    parser.add_argument('--train_stride', type=int, default=2)
+    parser.add_argument('--data_stride', type=int, default=2)
     parser.add_argument('--recon_th', type=float, default=0.5)
 
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
@@ -99,8 +99,8 @@ if __name__ == '__main__':
 
 
     patch_H, patch_W = args.patch_size
-    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
-    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.train_stride) + ('_11days' if args.eleven_days_diff else '')
+    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '')
+    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '')
     if args.valset_from_partition is not None:
         with open(args.valset_from_partition, 'r') as file:
             loaded_data = json.load(file)
@@ -134,23 +134,23 @@ if __name__ == '__main__':
         # if byte_order == 'MSBFirst':
         #     full_intf_data = full_intf_data.byteswap().newbyteorder('<')
         ##
-        data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.train_stride) +'.npy'
-        mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.train_stride) +'.npy'
+        data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
+        mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
         data_path = data_dir + '/' + data_file_name
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
         data = (data + np.pi) /( 2*np.pi)
         mask = np.load(mask_path)
         assert data.ndim == 4 and mask.ndim == 4, "number of input dims should be 4 got data: {} mask: {} instead".format(data.ndim,mask.ndim)
-        reconstructed_intf = np.zeros((data.shape[0] * patch_H // 2 + patch_H // 2,data.shape[1] * patch_W // 2 + patch_W // 2))
-        reconstructed_mask = np.zeros((data.shape[0] * patch_H // 2 + patch_H // 2,data.shape[1] * patch_W // 2 + patch_W // 2))
-        reconstructed_pred = np.zeros((data.shape[0] * patch_H // 2 + patch_H // 2,data.shape[1] * patch_W // 2 + patch_W // 2))
+        reconstructed_intf = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H // args.data_stride,data.shape[1] * patch_W // args.data_stride + patch_W // args.data_stride))
+        reconstructed_mask = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H // args.data_stride,data.shape[1] * patch_W // args.data_stride + patch_W // args.data_stride))
+        reconstructed_pred = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H // args.data_stride,data.shape[1] * patch_W // args.data_stride + patch_W // args.data_stride))
 
         for i in range(data.shape[0]):
             print(i)
             for j in range(data.shape[1]):
-                reconstructed_intf[i * patch_H//2 : i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += data[i,j]/4
-                reconstructed_mask[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += mask[i, j]/4
+                reconstructed_intf[i * patch_H//args.data_stride : i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += data[i,j]/args.data_stride**2
+                reconstructed_mask[i * patch_H // args.data_stride :i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += mask[i, j]/args.data_stride**2
                 # if  np.any(data[i,j]>5):
                 image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
                 pred = net(image)
@@ -158,7 +158,7 @@ if __name__ == '__main__':
                 pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
 
 
-                reconstructed_pred[i * patch_H // 2 :i* patch_H // 2 + patch_H , j * patch_W // 2 : j * patch_W // 2 + patch_W] += pred/4
+                reconstructed_pred[i * patch_H // args.data_stride :i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += pred/args.data_stride**2
 
                     # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
                     # ax1.imshow(data[i,j])
