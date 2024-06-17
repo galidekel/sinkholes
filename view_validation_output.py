@@ -40,6 +40,7 @@ for item in unique_intf_list:
 
     precision = precision1(mask_true,mask_pred)
     recall = recall1(mask_true,mask_pred)
+    print('intf ' + item + ':')
     print(precision,recall)
     r, p = object_level_evaluate(mask_true,mask_pred)
     recalls.append(r)
