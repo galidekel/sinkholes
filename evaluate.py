@@ -81,8 +81,8 @@ def object_level_evaluate(gt, pred,epsilon = 1e-7):
         intersect_recall.append(ol_intersection_recall)
         intersect_precision.append(ol_intersection_precision)
 
-        print('{}: object level precision score:'.format(i), ol_intersection_precision)
-        print('object level recall score:', ol_intersection_recall)
+        # print('{}: object level precision score:'.format(i), ol_intersection_precision)
+        # print('object level recall score:', ol_intersection_recall)
 
 
     batch_intersect_recall = round(np.sum(np.array(intersect_recall)*np.array(patch_gt_areas))/np.sum(np.array(patch_gt_areas)),2)
