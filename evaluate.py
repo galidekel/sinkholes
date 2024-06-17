@@ -33,11 +33,11 @@ def object_level_evaluate(gt, pred,epsilon = 1e-7):
 
 
         for geom, val in rasterio.features.shapes(gt[i], transform=transform):
-            if val == 1:  # Assuming binary mask has values 0 and 1
+            if val > 0:  # Assuming binary mask has values 0 and 1
                 gt_polygons.append(shape(geom))
 
         for geom, val in rasterio.features.shapes(pred[i], transform=transform):
-            if val == 1:  # Assuming binary mask has values 0 and 1
+            if val > 0:  # Assuming binary mask has values 0 and 1
                 pred_polygons.append(shape(geom))
 
         th = 0.7
