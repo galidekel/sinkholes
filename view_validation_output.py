@@ -21,7 +21,7 @@ path=args.path
 plot=str2bool(args.plot)
 plt.rcParams['backend'] = 'Qt5Agg'
 files_list = os.listdir(path)
-intf_list = [file[:17] for file in files_list if file[-3:] !='log']
+intf_list = [file[:17] for file in files_list if (file[-3:] !='log' and '20210131' not in file)]
 unique_intf_list = list(set(intf_list))
 
 images,preds,gts, precisions,recalls = [],[],[],[],[]
