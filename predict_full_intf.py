@@ -1,3 +1,5 @@
+import sys
+
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -45,9 +47,8 @@ def get_pred_args():
     parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
     parser.add_argument('--intf_list', type=str, default = None, help='a list of intf ids divided by comma')
 
-    parser.add_argument('--model', '-m', default='checkpoint_epoch150.pth', metavar='FILE',
+    parser.add_argument('--model', '-m', default='checkpoint_epoch28.pth', metavar='FILE',
                         help='Specify the file in which the model is stored')
-    parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
 
     parser.add_argument('--data_stride', type=int, default=2)
     parser.add_argument('--recon_th', type=float, default=0.5)
@@ -142,14 +143,18 @@ if __name__ == '__main__':
         data = (data + np.pi) /( 2*np.pi)
         mask = np.load(mask_path)
         assert data.ndim == 4 and mask.ndim == 4, "number of input dims should be 4 got data: {} mask: {} instead".format(data.ndim,mask.ndim)
-        reconstructed_intf = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H // args.data_stride,data.shape[1] * patch_W // args.data_stride + patch_W // args.data_stride))
-        reconstructed_mask = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H // args.data_stride,data.shape[1] * patch_W // args.data_stride + patch_W // args.data_stride))
-        reconstructed_pred = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H // args.data_stride,data.shape[1] * patch_W // args.data_stride + patch_W // args.data_stride))
+        reconstructed_intf = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1-1 // args.data_stride),data.shape[1] * patch_W // args.data_stride + patch_W*(1-1 // args.data_stride)))
+        reconstructed_mask = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1-1 // args.data_stride),data.shape[1] * patch_W // args.data_stride + patch_W * (1-1 // args.data_stride)))
+        reconstructed_pred = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1-1 // args.data_stride),data.shape[1] * patch_W // args.data_stride + patch_W* (1-1 // args.data_stride)))
 
         for i in range(data.shape[0]):
             print(i)
             for j in range(data.shape[1]):
-                reconstructed_intf[i * patch_H//args.data_stride : i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += data[i,j]/args.data_stride**2
+                try:
+                    reconstructed_intf[i * patch_H//args.data_stride : i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += data[i,j]/args.data_stride**2
+                except Exception as e:
+                    logging.info('error when i {} j {}'.format(i,j))
+                    sys.exit()
                 reconstructed_mask[i * patch_H // args.data_stride :i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += mask[i, j]/args.data_stride**2
                 # if  np.any(data[i,j]>5):
                 image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
@@ -160,22 +165,32 @@ if __name__ == '__main__':
 
                 reconstructed_pred[i * patch_H // args.data_stride :i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += pred/args.data_stride**2
 
-                    # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
-                    # ax1.imshow(data[i,j])
-                    # ax2.imshow(mask[i,j])
-                    # ax3.imshow(pred)
-                    # plt.show()
+
+                # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
+                # ax1.imshow(data[i,j])
+                # ax2.imshow(mask[i,j])
+                # ax3.imshow(pred)
+                # plt.show()
         reconstructed_pred = np.where(reconstructed_pred > args.recon_th, 1, 0).astype(np.float32)
         transform = Affine.identity()  # Create an identity transform
         polygons = []
         for geom, val in rasterio.features.shapes(reconstructed_pred, transform=transform):
-            polygons.append(shape(geom))
+            if val ==1:
+                polygons.append(shape(geom))
 
         polygons_gpd = gpd.GeoDataFrame(geometry=polygons)
+
         prefix = output_path  + intf
+        out_polyg_path = prefix + '_predicted_polyogns.shp'
+        polygons_gpd.to_file(out_polyg_path)
+
+
         np.save(prefix +'_pred', reconstructed_pred)
         np.save(prefix +'_image', reconstructed_intf)
         np.save(prefix +'_gt', reconstructed_mask)
+
+
+
         # fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
         #
         # # ax1.imshow(full_intf_data)
@@ -205,8 +220,8 @@ if __name__ == '__main__':
         #
         # # Show the plot
         # plt.show()
-        #
-        #
+
+
 
 
 
