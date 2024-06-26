@@ -163,12 +163,12 @@ if __name__ == '__main__':
                 is_within_mask = mask_polyg.geometry.apply(lambda poly: rectangle.within(poly)).any()
                 intersection_areas = []
 
-                for p in mask_polyg.geometry:
-                    if rectangle.intersects(p):
-                        intersection = rectangle.intersection(p)
-                        intersection_areas.append(intersection.area)
-                intersection_area = sum(intersection_areas) if len(intersection_areas) > 0 else 0
-                relative_intersection = intersection_area / rectangle.area
+                # for p in mask_polyg.geometry:
+                #     if rectangle.intersects(p):
+                #         intersection = rectangle.intersection(p)
+                #         intersection_areas.append(intersection.area)
+                # intersection_area = sum(intersection_areas) if len(intersection_areas) > 0 else 0
+                # relative_intersection = intersection_area / rectangle.area
 
 
                 # fig, ax = plt.subplots()
