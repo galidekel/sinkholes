@@ -56,7 +56,7 @@ def get_pred_args():
 
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
     parser.add_argument('--job_name', type=str, default='job', help='unique job name')
-    parser.add_argument('--plot', type=str,default=False)
+    parser.add_argument('--plot', type=str,default='False')
 
 
     return parser.parse_args()
