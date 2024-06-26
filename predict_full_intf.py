@@ -160,7 +160,7 @@ if __name__ == '__main__':
                 rectangle_gdf = gpd.GeoDataFrame(geometry=[rectangle])
 
 
-                is_within_mask = mask_polyg.geometry.apply(lambda poly: rectangle.within(poly)).any()
+                is_within_mask = True# mask_polyg.geometry.apply(lambda poly: rectangle.within(poly)).any()
                 # ints_area = rectangle_gdf.intersection(mask_polyg).area
                 # intersection_areas = []
 
