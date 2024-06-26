@@ -147,6 +147,7 @@ if __name__ == '__main__':
         height, width = reconstructed_intf.shape[0], reconstructed_intf.shape[1]   # Raster dimensions
         transform = rasterio.transform.from_origin(x4000, y0, dx, dy)  # Example transform
 
+
         # Create an empty raster array
         raster = np.zeros((height, width), dtype=np.uint8)
         geometries = mask_polyg['geometry'].tolist()
