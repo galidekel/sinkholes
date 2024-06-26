@@ -158,10 +158,11 @@ if __name__ == '__main__':
                 xrn = xr0 + dx * patch_W
                 rectangle = box(xr0, yrn, xrn, yr0)
                 rectangle_gdf = gpd.GeoDataFrame(geometry=[rectangle])
-                ints_area = rectangle_gdf.intersection(mask_polyg).area
+
 
                 is_within_mask = mask_polyg.geometry.apply(lambda poly: rectangle.within(poly)).any()
-                intersection_areas = []
+                # ints_area = rectangle_gdf.intersection(mask_polyg).area
+                # intersection_areas = []
 
                 # for p in mask_polyg.geometry:
                 #     if rectangle.intersects(p):
