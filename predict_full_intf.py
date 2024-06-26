@@ -26,7 +26,8 @@ from os import listdir
 import json
 
 import os
-
+import rasterio
+from rasterio.features import rasterize
 import logging
 from datetime import datetime
 from lidar_mask import *
@@ -143,6 +144,25 @@ if __name__ == '__main__':
         reconstructed_mask = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1-1 // args.data_stride),data.shape[1] * patch_W // args.data_stride + patch_W * (1-1 // args.data_stride)))
         reconstructed_pred = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1-1 // args.data_stride),data.shape[1] * patch_W // args.data_stride + patch_W* (1-1 // args.data_stride)))
 
+        height, width = reconstructed_intf.shape[0], reconstructed_intf.shape[1]   # Raster dimensions
+        transform = rasterio.transform.from_origin(x4000, y0, dx, dy)  # Example transform
+
+        # Create an empty raster array
+        raster = np.zeros((height, width), dtype=np.uint8)
+        geometries = mask_polyg['geometry'].tolist()
+        # Rasterize the polygon
+        rasterized_polygon = rasterize(
+            [(g, 1) for g in geometries],  # List of (geometry, value) tuples
+            out_shape=raster.shape,
+            transform=transform,
+            fill=0,
+            all_touched=True,  # If True, all pixels touched by geometries will be burned in
+            dtype=raster.dtype
+        )
+
+        if args.plot:
+            plt.imshow(rasterized_polygon)
+            plt.show()
         for i in range(data.shape[0]):
             print(i)
 
@@ -152,15 +172,15 @@ if __name__ == '__main__':
                 j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += mask[
                                                                                                    i, j] / args.data_stride ** 2
 
-                yr0 = y0 - dy * i * patch_H/args.data_stride
-                yrn = yr0 - dy * patch_H
-                xr0 = x4000 + dx *j * patch_W/args.data_stride
-                xrn = xr0 + dx * patch_W
-                rectangle = box(xr0, yrn, xrn, yr0)
-                rectangle_gdf = gpd.GeoDataFrame(geometry=[rectangle])
-
-
-                is_within_mask = True# mask_polyg.geometry.apply(lambda poly: rectangle.within(poly)).any()
+                # yr0 = y0 - dy * i * patch_H/args.data_stride
+                # yrn = yr0 - dy * patch_H
+                # xr0 = x4000 + dx *j * patch_W/args.data_stride
+                # xrn = xr0 + dx * patch_W
+                # rectangle = box(xr0, yrn, xrn, yr0)
+                # rectangle_gdf = gpd.GeoDataFrame(geometry=[rectangle])
+                #
+                #
+                # is_within_mask = True# mask_polyg.geometry.apply(lambda poly: rectangle.within(poly)).any()
                 # ints_area = rectangle_gdf.intersection(mask_polyg).area
                 # intersection_areas = []
 
@@ -185,6 +205,9 @@ if __name__ == '__main__':
                 # plt.show()
                 # plt.close()
                 #if relative_intersection > 0.5:
+                is_within_mask = np.all(rasterized_polygon[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
+                j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W])
+
                 if is_within_mask:
 
                     # if  np.any(data[i,j]>5):
