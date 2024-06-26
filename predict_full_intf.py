@@ -16,7 +16,7 @@ import rasterio
 from rasterio.features import shapes
 
 import rasterio.features
-from shapely.geometry import shape
+from shapely.geometry import shape, polygon, box
 
 import geopandas as gpd
 from unet import *
@@ -29,6 +29,7 @@ import os
 
 import logging
 from datetime import datetime
+from lidar_mask import *
 
 def str2bool(arg):
     if arg.lower() == 'true':
@@ -113,6 +114,8 @@ if __name__ == '__main__':
     else:
         intf_list = [file[13:30] for file in listdir(data_dir) if 'nonz' not in file]
 
+    lidar_mask_df = gpd.read_file('lidar_mask_polygs.shp')
+
     for intf in intf_list:
 
         ## uncomment if we want to compare to original intf
@@ -135,6 +138,15 @@ if __name__ == '__main__':
         # if byte_order == 'MSBFirst':
         #     full_intf_data = full_intf_data.byteswap().newbyteorder('<')
         ##
+
+        x0,y0,dx,dy,x4000,x8500,intf_lidar_mask = get_intf_coords(intf)
+
+        mask_polyg = lidar_mask_df[lidar_mask_df['source'] == intf_lidar_mask]
+
+
+        mask_polyg.plot()
+        plt.show()
+
         data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
         mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
         data_path = data_dir + '/' + data_file_name
@@ -149,21 +161,54 @@ if __name__ == '__main__':
 
         for i in range(data.shape[0]):
             print(i)
+
             for j in range(data.shape[1]):
-                try:
-                    reconstructed_intf[i * patch_H//args.data_stride : i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += data[i,j]/args.data_stride**2
-                except Exception as e:
-                    logging.info('error when i {} j {}'.format(i,j))
-                    sys.exit()
-                reconstructed_mask[i * patch_H // args.data_stride :i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += mask[i, j]/args.data_stride**2
-                # if  np.any(data[i,j]>5):
-                image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
-                pred = net(image)
-                pred = (F.sigmoid(pred) > 0.5).float()
-                pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
+                reconstructed_intf[i * patch_H // args.data_stride: i * patch_H // args.data_stride + patch_H,j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += data[i, j] / args.data_stride ** 2
+                reconstructed_mask[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
+                j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += mask[
+                                                                                                   i, j] / args.data_stride ** 2
+
+                yr0 = y0 - dy * i * patch_H/args.data_stride
+                yrn = yr0 - dy * patch_H
+                xr0 = x4000 + dx *j * patch_W/args.data_stride
+                xrn = xr0 + dx * patch_W
+                rectangle = box(xr0, yrn, xrn, yr0)
+                rectangle_gdf = gpd.GeoDataFrame(geometry=[rectangle])
+                ints_area = rectangle_gdf.intersection(mask_polyg).area
+
+                is_within_mask = mask_polyg.geometry.apply(lambda poly: rectangle.within(poly)).any()
+                intersection_areas = []
+
+                for p in mask_polyg.geometry:
+                    if rectangle.intersects(p):
+                        intersection = rectangle.intersection(p)
+                        intersection_areas.append(intersection.area)
+                intersection_area = sum(intersection_areas) if len(intersection_areas) > 0 else 0
+                relative_intersection = intersection_area / rectangle.area
 
 
-                reconstructed_pred[i * patch_H // args.data_stride :i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += pred/args.data_stride**2
+                # fig, ax = plt.subplots()
+                #
+                # # Plot both GeoDataFrames on the same plot
+                # mask_polyg.plot(ax=ax, edgecolor='blue', facecolor='none', label='Polygon 1')
+                # rectangle_gdf.plot(ax=ax, edgecolor='red', facecolor='none', label='Polygon 2')
+                #
+                #
+                # ax.set_title(str(relative_intersection))
+                #
+                #
+                # plt.show()
+                # plt.close()
+                if relative_intersection > 0.5:
+
+                    # if  np.any(data[i,j]>5):
+                    image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
+                    pred = net(image)
+                    pred = (F.sigmoid(pred) > 0.5).float()
+                    pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
+
+
+                    reconstructed_pred[i * patch_H // args.data_stride :i* patch_H // args.data_stride + patch_H , j * patch_W // args.data_stride : j * patch_W // args.data_stride + patch_W] += pred/args.data_stride**2
 
 
                 # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
@@ -191,35 +236,35 @@ if __name__ == '__main__':
 
 
 
-        # fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
-        #
-        # # ax1.imshow(full_intf_data)
-        # # ax1.set_title('Orig Image')
-        #
-        # ax1.imshow(reconstructed_intf)
-        # ax1.set_title('Reconstructed Image')
-        # ax2.imshow(reconstructed_mask)
-        # ax2.set_title('Reconstructed True mask')
-        # ax3.imshow(reconstructed_pred)
-        # ax3.set_title('pred mask')
-        # def on_xlims_change(axes):
-        #     for ax in (ax1, ax2, ax3):
-        #         if ax != axes:
-        #             ax.set_xlim(axes.get_xlim())
-        #
-        #
-        # def on_ylims_change(axes):
-        #     for ax in (ax1, ax2, ax3):
-        #         if ax != axes:
-        #             ax.set_ylim(axes.get_ylim())
-        #
-        #
-        # # Connect the events
-        # ax1.callbacks.connect('xlim_changed', on_xlims_change)
-        # ax1.callbacks.connect('ylim_changed', on_ylims_change)
-        #
-        # # Show the plot
-        # plt.show()
+        fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
+
+        # ax1.imshow(full_intf_data)
+        # ax1.set_title('Orig Image')
+
+        ax1.imshow(reconstructed_intf)
+        ax1.set_title('Reconstructed Image')
+        ax2.imshow(reconstructed_mask)
+        ax2.set_title('Reconstructed True mask')
+        ax3.imshow(reconstructed_pred)
+        ax3.set_title('pred mask')
+        def on_xlims_change(axes):
+            for ax in (ax1, ax2, ax3):
+                if ax != axes:
+                    ax.set_xlim(axes.get_xlim())
+
+
+        def on_ylims_change(axes):
+            for ax in (ax1, ax2, ax3):
+                if ax != axes:
+                    ax.set_ylim(axes.get_ylim())
+
+
+        # Connect the events
+        ax1.callbacks.connect('xlim_changed', on_xlims_change)
+        ax1.callbacks.connect('ylim_changed', on_ylims_change)
+
+        # Show the plot
+        plt.show()
 
 
 
