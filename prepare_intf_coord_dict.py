@@ -1,6 +1,8 @@
 from os import listdir
 import argparse
 import json
+from lidar_mask import *
+import logging
 
 
 parser = argparse.ArgumentParser(description='Prepare patches of intrfrgrm data')
@@ -29,7 +31,10 @@ for file in listdir(args.intf_dir):
                     if 'Xdimension' in line:
                         dX = float(line.strip().split()[-1])
         intfrgrm_name = file.split('.')[0][9:17] + file.split('.')[0][24:33]
-        intf_dict[intfrgrm_name] = {'north': y0,'east':x0, 'nlines': NLINES, 'ncells':NCELLS, 'dy' : dY, 'dx':dX}
+        intf_lidar_mask = get_intf_lidar_mask(intfrgrm_name)
+        if intf_lidar_mask == 'no_mask':
+            logging.info('Note: No LiDAR mask for {}. Please decide what todo with it.'.format(intfrgrm_name))
+        intf_dict[intfrgrm_name] = {'north': y0,'east':x0, 'nlines': NLINES, 'ncells':NCELLS, 'dy' : dY, 'dx':dX, 'lidar_mask':intf_lidar_mask}
 
 
 with open(args.out_dir + 'intf_coord.json', 'w') as json_file:
