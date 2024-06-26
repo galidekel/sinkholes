@@ -121,26 +121,6 @@ if __name__ == '__main__':
 
     for intf in intf_list:
 
-        ## uncomment if we want to compare to original intf
-        # full_intf_file = [file for file in Path(args.full_intf_dir).glob('*.unw') if file.name[9:17] == intf[:8] and file.name[25:33] == intf[9:]][0].name
-        # with open(args.full_intf_dir + full_intf_file + '.ers') as f:
-        #     for line in f:
-        #         if 'NrOfLines' in line:
-        #             NLINES = int(line.strip().split()[-1])
-        #         elif 'NrOfCellsPerLine' in line:
-        #             NCELLS = int(line.strip().split()[-1])
-        #         if 'ByteOrder' in line:
-        #             byte_order = line.strip().split()[-1]
-        #         if 'Eastings' in line:
-        #             x0 = float(line.strip().split()[-1])
-        #         if 'Northings' in line:
-        #             y0 = float(line.strip().split()[-1])
-        #
-        # full_intf_data = np.fromfile(args.full_intf_dir  + full_intf_file, dtype=np.float32, count=-1, sep='', offset=0).reshape(
-        #     NLINES, NCELLS)[:,4000:8500]
-        # if byte_order == 'MSBFirst':
-        #     full_intf_data = full_intf_data.byteswap().newbyteorder('<')
-        ##
 
         x0,y0,dx,dy,x4000,x8500,intf_lidar_mask = get_intf_coords(intf)
 
@@ -203,7 +183,8 @@ if __name__ == '__main__':
                 #
                 # plt.show()
                 # plt.close()
-                if relative_intersection > 0.5:
+                #if relative_intersection > 0.5:
+                if is_within_mask:
 
                     # if  np.any(data[i,j]>5):
                     image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
