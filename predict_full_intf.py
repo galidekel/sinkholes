@@ -56,18 +56,21 @@ def get_pred_args():
 
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
     parser.add_argument('--job_name', type=str, default='job', help='unique job name')
+    parser.add_argument('--plot', type=str,default=False)
 
 
     return parser.parse_args()
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)  # Set the logging level (e.g., INFO)
-
-    plt.rcParams['backend'] = 'Qt5Agg'
+    is_running_locally = os.environ.get('LOCAL_ENVIRONMENT', False)
     now = datetime.now().strftime("%m_%d_%Hh%M")
 
     args = get_pred_args()
     args.eleven_days_diff = str2bool(args.eleven_days_diff)
+    args.plot = str2bool(args.plot)
+    if not is_running_locally:
+        args.plot = False
     job_name = args.job_name +'_'+ now
     model_name = args.model.split('.')[0]
     output_path = 'pred_outputs/' + model_name + '/' + job_name + '/'
@@ -143,9 +146,10 @@ if __name__ == '__main__':
 
         mask_polyg = lidar_mask_df[lidar_mask_df['source'] == intf_lidar_mask]
 
-
-        mask_polyg.plot()
-        plt.show()
+        if args.plot:
+            plt.rcParams['backend'] = 'Qt5Agg'
+            mask_polyg.plot()
+            plt.show()
 
         data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
         mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
@@ -235,36 +239,36 @@ if __name__ == '__main__':
         np.save(prefix +'_gt', reconstructed_mask)
 
 
+        if args.plot:
+            fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
 
-        fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
+            # ax1.imshow(full_intf_data)
+            # ax1.set_title('Orig Image')
 
-        # ax1.imshow(full_intf_data)
-        # ax1.set_title('Orig Image')
-
-        ax1.imshow(reconstructed_intf)
-        ax1.set_title('Reconstructed Image')
-        ax2.imshow(reconstructed_mask)
-        ax2.set_title('Reconstructed True mask')
-        ax3.imshow(reconstructed_pred)
-        ax3.set_title('pred mask')
-        def on_xlims_change(axes):
-            for ax in (ax1, ax2, ax3):
-                if ax != axes:
-                    ax.set_xlim(axes.get_xlim())
-
-
-        def on_ylims_change(axes):
-            for ax in (ax1, ax2, ax3):
-                if ax != axes:
-                    ax.set_ylim(axes.get_ylim())
+            ax1.imshow(reconstructed_intf)
+            ax1.set_title('Reconstructed Image')
+            ax2.imshow(reconstructed_mask)
+            ax2.set_title('Reconstructed True mask')
+            ax3.imshow(reconstructed_pred)
+            ax3.set_title('pred mask')
+            def on_xlims_change(axes):
+                for ax in (ax1, ax2, ax3):
+                    if ax != axes:
+                        ax.set_xlim(axes.get_xlim())
 
 
-        # Connect the events
-        ax1.callbacks.connect('xlim_changed', on_xlims_change)
-        ax1.callbacks.connect('ylim_changed', on_ylims_change)
+            def on_ylims_change(axes):
+                for ax in (ax1, ax2, ax3):
+                    if ax != axes:
+                        ax.set_ylim(axes.get_ylim())
 
-        # Show the plot
-        plt.show()
+
+            # Connect the events
+            ax1.callbacks.connect('xlim_changed', on_xlims_change)
+            ax1.callbacks.connect('ylim_changed', on_ylims_change)
+
+            # Show the plot
+            plt.show()
 
 
 
