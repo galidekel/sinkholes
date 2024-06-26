@@ -17,9 +17,11 @@ def get_intf_lidar_mask(intf_name):
     with open('lidar_intf_mask.txt', 'r') as f:
         mask = 'no_mask'
         for line in f:
-            if intf_name[:8] == line[8:16]:
+            if intf_name[:8] == line[8:16] and intf_name[9:17] == line[24:32]:
                 mask = line[40:49]
-                print(mask)
+            elif intf_name[:8] == line[8:16]:
+                mask = line[40:49]
+
 
     return mask
 
