@@ -7,12 +7,14 @@ def get_intf_coords(intf_name):
     y0 = intf_coords[intf_name]['north']
     dx = intf_coords[intf_name]['dx']
     dy = intf_coords[intf_name]['dy']
+    nlines = intf_coords[intf_name]['nlines']
+    ncells = intf_coords[intf_name]['ncells']
     lidar_mask = intf_coords[intf_name]['lidar_mask']
 
     x4000 = x0 + 4000*dx
     x8500 = x4000 + 4500*dx
 
-    return x0, y0, dx, dy, x4000, x8500,lidar_mask
+    return (x0, y0, dx, dy,ncells, nlines, x4000, x8500,lidar_mask)
 def get_intf_lidar_mask(intf_name):
     with open('lidar_intf_mask.txt', 'r') as f:
         mask = 'no_mask'
