@@ -30,7 +30,11 @@ import rasterio
 from rasterio.features import rasterize
 import logging
 from datetime import datetime
-from lidar_mask import *
+from get_intf_info import *
+from shapely.affinity import affine_transform
+from shapely.geometry import Polygon
+
+
 
 def str2bool(arg):
     if arg.lower() == 'true':
@@ -57,6 +61,8 @@ def get_pred_args():
 
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
     parser.add_argument('--job_name', type=str, default='job', help='unique job name')
+    parser.add_argument('--add_lidar_mask', type=str,default='True')
+
     parser.add_argument('--plot', type=str,default='False')
 
 
@@ -70,6 +76,7 @@ if __name__ == '__main__':
     args = get_pred_args()
     args.eleven_days_diff = str2bool(args.eleven_days_diff)
     args.plot = str2bool(args.plot)
+    args.add_lidar_mask = str2bool(args.add_lidar_mask)
     if not is_running_locally:
         args.plot = False
     job_name = args.job_name +'_'+ now
@@ -118,19 +125,21 @@ if __name__ == '__main__':
     else:
         intf_list = [file[13:30] for file in listdir(data_dir) if 'nonz' not in file]
 
-    lidar_mask_df = gpd.read_file('lidar_mask_polygs.shp')
+    if args.add_lidar_mask:
+        lidar_mask_df = gpd.read_file('lidar_mask_polygs.shp')
 
     for intf in intf_list:
 
 
-        x0,y0,dx,dy,x4000,x8500,intf_lidar_mask = get_intf_coords(intf)
+        x0,y0,dx,dy,nlines,x4000,x8500,intf_lidar_mask = get_intf_coords(intf)
 
-        mask_polyg = lidar_mask_df[lidar_mask_df['source'] == intf_lidar_mask]
+        if args.add_lidar_mask:
+            mask_polyg = lidar_mask_df[lidar_mask_df['source'] == intf_lidar_mask]
 
-        if args.plot:
-            plt.rcParams['backend'] = 'Qt5Agg'
-            mask_polyg.plot()
-            plt.show()
+            if args.plot:
+                plt.rcParams['backend'] = 'Qt5Agg'
+                mask_polyg.plot()
+                plt.show()
 
         data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
         mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
@@ -144,26 +153,28 @@ if __name__ == '__main__':
         reconstructed_mask = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1-1 // args.data_stride),data.shape[1] * patch_W // args.data_stride + patch_W * (1-1 // args.data_stride)))
         reconstructed_pred = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1-1 // args.data_stride),data.shape[1] * patch_W // args.data_stride + patch_W* (1-1 // args.data_stride)))
 
-        height, width = reconstructed_intf.shape[0], reconstructed_intf.shape[1]   # Raster dimensions
-        transform = rasterio.transform.from_origin(x4000, y0, dx, dy)  # Example transform
+
+        if args.add_lidar_mask:
+            height, width = reconstructed_intf.shape[0], reconstructed_intf.shape[1]   # Raster dimensions
+            transform = rasterio.transform.from_origin(x4000, y0, dx, dy)  # Example transform
 
 
-        # Create an empty raster array
-        raster = np.zeros((height, width), dtype=np.uint8)
-        geometries = mask_polyg['geometry'].tolist()
-        # Rasterize the polygon
-        rasterized_polygon = rasterize(
-            [(g, 1) for g in geometries],  # List of (geometry, value) tuples
-            out_shape=raster.shape,
-            transform=transform,
-            fill=0,
-            all_touched=True,  # If True, all pixels touched by geometries will be burned in
-            dtype=raster.dtype
-        )
+            # Create an empty raster array
+            raster = np.zeros((height, width), dtype=np.uint8)
+            geometries = mask_polyg['geometry'].tolist()
+            # Rasterize the polygon
+            rasterized_polygon = rasterize(
+                [(g, 1) for g in geometries],  # List of (geometry, value) tuples
+                out_shape=raster.shape,
+                transform=transform,
+                fill=0,
+                all_touched=True,  # If True, all pixels touched by geometries will be burned in
+                dtype=raster.dtype
+            )
 
-        if args.plot:
-            plt.imshow(rasterized_polygon)
-            plt.show()
+            if args.plot:
+                plt.imshow(rasterized_polygon)
+                plt.show()
         for i in range(data.shape[0]):
             print(i)
 
@@ -206,10 +217,12 @@ if __name__ == '__main__':
                 # plt.show()
                 # plt.close()
                 #if relative_intersection > 0.5:
-                is_within_mask = np.all(rasterized_polygon[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
-                j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W])
+                is_within_mask = True
+                if args.add_lidar_mask:
+                    is_within_mask = np.all(rasterized_polygon[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
+                    j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W])
 
-                if is_within_mask:
+                if is_within_mask and args.add_lidar_mask:
 
                     # if  np.any(data[i,j]>5):
                     image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
@@ -227,14 +240,35 @@ if __name__ == '__main__':
                 # ax3.imshow(pred)
                 # plt.show()
         reconstructed_pred = np.where(reconstructed_pred > args.recon_th, 1, 0).astype(np.float32)
-        transform = Affine.identity()  # Create an identity transform
-        polygons = []
-        for geom, val in rasterio.features.shapes(reconstructed_pred, transform=transform):
-            if val ==1:
-                polygons.append(shape(geom))
 
-        polygons_gpd = gpd.GeoDataFrame(geometry=polygons)
 
+        def mask_array_to_polygons(mask_array, north, west, pixel_size):
+            polygons = []
+            height, width = mask_array.shape
+            for y in range(height - 1):
+                for x in range(width - 1):
+                    if mask_array[y, x] == 1:
+                        # Calculate vertices in latlon coordinates
+                        lon1 = west + x * pixel_size
+                        lon2 = west + (x + 1) * pixel_size
+                        lat1 = north - y * pixel_size
+                        lat2 = north - (y + 1) * pixel_size
+                        # Define polygon vertices in lon-lat order
+                        vertices = [(lon1, lat1), (lon2, lat1), (lon2, lat2), (lon1, lat2)]
+                        # Create polygon and append to list
+                        polygons.append(Polygon(vertices))
+            return polygons
+
+
+        # Convert mask array to polygons with latlon coordinates
+        polygons = mask_array_to_polygons(reconstructed_pred, y0, x4000, dx)
+
+
+        polygons_gpd = gpd.GeoDataFrame(geometry=polygons, crs='EPSG:4326')  # Adjust CRS as necessary
+
+
+        polygons_gpd.plot()
+        plt.show()
         prefix = output_path  + intf
         out_polyg_path = prefix + '_predicted_polyogns.shp'
         polygons_gpd.to_file(out_polyg_path)
@@ -247,15 +281,19 @@ if __name__ == '__main__':
 
         if args.plot:
             fig, (ax1, ax2,ax3) = plt.subplots(1, 3, figsize=(10,5))
+            extent = [x4000, x8500, y0 - dy * nlines, y0]
 
             # ax1.imshow(full_intf_data)
             # ax1.set_title('Orig Image')
 
-            ax1.imshow(reconstructed_intf)
+            ax1.imshow(reconstructed_intf,extent=extent)
             ax1.set_title('Reconstructed Image')
-            ax2.imshow(reconstructed_mask)
+            polygons_gpd.plot(ax=ax1, facecolor='none', edgecolor='white')
+
+            ax2.imshow(reconstructed_mask,extent=extent)
             ax2.set_title('Reconstructed True mask')
-            ax3.imshow(reconstructed_pred)
+
+            ax3.imshow(reconstructed_pred,extent=extent)
             ax3.set_title('pred mask')
             def on_xlims_change(axes):
                 for ax in (ax1, ax2, ax3):
