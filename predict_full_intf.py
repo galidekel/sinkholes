@@ -222,7 +222,7 @@ if __name__ == '__main__':
                     is_within_mask = np.all(rasterized_polygon[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
                     j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W])
 
-                if is_within_mask and args.add_lidar_mask:
+                if is_within_mask :
 
                     # if  np.any(data[i,j]>5):
                     image = torch.tensor(data[i,j]).unsqueeze(0).unsqueeze(1).to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
