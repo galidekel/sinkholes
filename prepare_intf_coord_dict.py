@@ -1,7 +1,7 @@
 from os import listdir
 import argparse
 import json
-from lidar_mask import *
+from get_intf_info import *
 import logging
 
 
