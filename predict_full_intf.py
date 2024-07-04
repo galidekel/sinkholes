@@ -131,7 +131,7 @@ if __name__ == '__main__':
     for intf in intf_list:
 
 
-        x0,y0,dx,dy,nlines,x4000,x8500,intf_lidar_mask = get_intf_coords(intf)
+        x0,y0,dx,dy,ncells,nlines,x4000,x8500,intf_lidar_mask = get_intf_coords(intf)
 
         if args.add_lidar_mask:
             mask_polyg = lidar_mask_df[lidar_mask_df['source'] == intf_lidar_mask]
