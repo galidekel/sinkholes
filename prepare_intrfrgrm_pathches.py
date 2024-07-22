@@ -9,6 +9,7 @@ import argparse
 from pathlib import Path
 import os
 from train_sinkholes_unet import str2bool
+
 logging.basicConfig(level=logging.INFO)
 
 def sliding_window_with_stride(input_array,mask_array, window_size, stride):
@@ -43,6 +44,8 @@ def get_args():
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--strides_per_patch',type=int, default=2, help='strides per patch - 2 means half a window stride, 4 means quarter a window stride etc')
+    parser.add_argument('--intf_22_23',  type=str, default='False')
+
     parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
 
     return parser.parse_args()
@@ -52,11 +55,15 @@ if __name__ == '__main__':
 
     args = get_args()
     args.eleven_days_diff= str2bool(args.eleven_days_diff)
+    args.intf_22_23 = str2bool(args.intf_22_23)
+
     gdf = gpd.read_file(args.gt_polygon_file_path)
     patch_size = tuple(args.patch_size)
     patch_H, patch_W = patch_size
-    data_output_dir = args.output_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_11days' if args.eleven_days_diff else '')
-    mask_output_dir = args.output_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_11days' if args.eleven_days_diff else '')
+    data_output_dir = args.output_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_11days' if args.eleven_days_diff else '') + ('_22_23' if args.intf_22_23 else '')
+    mask_output_dir = args.output_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_11days' if args.eleven_days_diff else '') +  ('_22_23' if args.intf_22_23 else '')
+
+
     for item in [data_output_dir, mask_output_dir]:
         if not os.path.exists(item):
             # If it doesn't exist, create it
@@ -73,7 +80,10 @@ if __name__ == '__main__':
                 start_datetime = datetime.strptime(start_date,"%Y-%m-%d")
                 end_datetime = datetime.strptime(end_date,"%Y-%m-%d")
                 days_diff = (end_datetime - start_datetime).days
-                if days_diff != 11 or start_datetime.year >2021:
+                if args.intf_22_23:
+                    if days_diff != 11 or end_datetime.year < 2022:
+                        continue
+                elif days_diff != 11 or start_datetime.year >2021:
                     continue
 
             with open(args.input_dir+'/'+gfile_name + '.ers') as f:
