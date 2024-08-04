@@ -52,8 +52,8 @@ def train_model(
     patch_size = tuple(args.patch_size)
     H, W = patch_size
 
-    image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
-    mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '')
+    image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
+    mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
     #
 
         #sys.exit(0)
@@ -228,6 +228,10 @@ def get_args():
     parser.add_argument('--job_name', type = str, default='', help='job name to add to output files')
     parser.add_argument('--intf_dict_path', type=str, default='./intf_coord.json', help='path to interferograms coord dict')
     parser.add_argument('--thresh_lat', type=float, default=31.4)
+    parser.add_argument('--train_with_nonz_th', type = str, default='False', help='train only on non zero mask patches')
+    parser.add_argument('--nonz_th',  nargs = '+', type = int, default=[350,150], help='north, south')
+
+
 
 
     return parser.parse_args()
@@ -244,6 +248,8 @@ if __name__ == '__main__':
     args = get_args()
     args.train_on_11d_diff = str2bool(args.train_on_11d_diff)
     args.nonz_only = str2bool(args.nonz_only)
+    args.train_with_nonz_th = str2bool(args.train_with_nonz_th)
+
     # Configure the logging system
     logging.basicConfig(level=logging.INFO)  # Set the logging level (e.g., INFO)
     now = datetime.now().strftime("%Y-%m-%d_%Hh%M")
