@@ -48,11 +48,11 @@ class SubsiDataset(Dataset):
 
         self.image_dir = Path(image_dir)
         self.mask_dir = Path(mask_dir)
-        # if not os.path.exists(self.image_dir) or not os.path.exists(self.mask_dir):
-        #     logging.info('It seems that the data you are requesting does not exist, please check.')
-        #     sys.exit(0)
+
         assert os.path.exists(self.image_dir) and os.path.exists(self.mask_dir), 'The data you are requesting does not exist'
         assert 0 < scale <= 1, 'Scale must be between 0 and 1'
+        if args.partition_mode == 'preset_by_intf':
+            assert intrfrgrm_list is not None, "Partition mode 'preset by intf' requires an input intrfrgrm list"
         self.scale = scale
         self.mask_suffix = mask_suffix
         if args.nonz_only and args.partition_mode != 'spatial':
@@ -61,19 +61,29 @@ class SubsiDataset(Dataset):
           pref , mask_pref = 'data_patches_', 'mask_patches_'
 
         start_intf_name = len(pref)
-        if args.partition_mode == 'spatial':
+        if args.partition_mode == 'spatial' or args.train_with_nonz_th:
             with open(args.intf_dict_path, 'r') as json_file:
                 coord_dict = json.load(json_file)
 
         if intrfrgrm_list is None:
-            intrfrgrm_list = [file for file in listdir(image_dir) if ('nonz' in file and args.nonz_only and args.partition_mode!='spatial') or ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'))]
-        if args.partition_mode == 'preset_by_intf':
-            self.ids = intrfrgrm_list
+            self.ids = [file.split('.')[0][start_intf_name:start_intf_name+17] for file in listdir(image_dir) if ('nonz' in file and args.nonz_only and args.partition_mode!='spatial') or ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'))]
         else:
-            self.ids = [file.split('.')[0][start_intf_name:start_intf_name+17] for file in intrfrgrm_list]
+            self.ids = intrfrgrm_list
+
+        if args.train_with_nonz_th:
+            nonz_th_north,nonz_th_south = tuple(args.nonz_th)[0],tuple(args.nonz_th)[1]
+            for intf in self.ids:
+                if (coord_dict[intf]['north'] > 31.5 and coord_dict[intf]['nonz_num'] < nonz_th_north) or (coord_dict[intf]['north'] < 31.5 and coord_dict[intf]['nonz_num']<nonz_th_south):
+                    self.ids.remove(intf)
+
+
 
         if not self.ids:
             raise RuntimeError(f'No input file found in {image_dir}, make sure you put your images there')
+
+
+
+
         self.image_data,self.mask_data,self.index_map = [],[],[]
         for i,id in enumerate(self.ids):
             if args.partition_mode != 'spatial':
