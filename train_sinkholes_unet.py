@@ -238,18 +238,7 @@ def get_args():
 
 
 if __name__ == '__main__':
-    is_running_locally = os.environ.get('LOCAL_ENVIRONMENT', False)
-
-    if is_running_locally:
-        print("Running locally")
-    else:
-        print("Running on a remote server")
-
     args = get_args()
-    args.train_on_11d_diff = str2bool(args.train_on_11d_diff)
-    args.nonz_only = str2bool(args.nonz_only)
-    args.train_with_nonz_th = str2bool(args.train_with_nonz_th)
-
     # Configure the logging system
     logging.basicConfig(level=logging.INFO)  # Set the logging level (e.g., INFO)
     now = datetime.now().strftime("%Y-%m-%d_%Hh%M")
@@ -258,22 +247,25 @@ if __name__ == '__main__':
     os.makedirs(outpath, exist_ok=True)
     # Create a FileHandler and specify the log file name
 
-    log_file =  outpath + args.job_name + '_' + now +'.log'
+    log_file = outpath + args.job_name + '_' + now + '.log'
     file_handler = logging.FileHandler(log_file)
     logging.getLogger().addHandler(file_handler)
+    logging.info("train job started")
+    is_running_locally = os.environ.get('LOCAL_ENVIRONMENT', False)
 
-    # Get the current date and time
-    current_time = datetime.now()
+    if is_running_locally:
+        logging.info("Running locally")
+    else:
+        logging.info("Running on a remote server")
 
-    # Format the current time without seconds
-    formatted_time = current_time.strftime("%Y-%m-%d %H:%M")
+
+    args.train_on_11d_diff = str2bool(args.train_on_11d_diff)
+    args.nonz_only = str2bool(args.nonz_only)
+    args.train_with_nonz_th = str2bool(args.train_with_nonz_th)
 
     dir_checkpoint = Path(outpath + 'checkpoints/')
     dir_validation = Path(outpath + 'validation/')
 
-
-
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #device = get_default_device()
     logging.info(f'Using device {device}')
