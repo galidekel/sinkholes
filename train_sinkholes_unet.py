@@ -70,6 +70,7 @@ def train_model(
         n_train = n_total - n_val - n_test
         train_set, temp_set = random_split(dataset, [n_train, n_total - n_train], generator=torch.Generator().manual_seed(0))
         val_set, test_set = random_split(temp_set, [n_val, n_test], generator=torch.Generator().manual_seed())
+        logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)) )
         with open('test_dataset.pkl', 'wb') as f:
             pickle.dump(test_set, f)
 
