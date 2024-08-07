@@ -18,7 +18,7 @@ import geopandas as gpd
 from unet import *
 import logging
 
-def object_level_evaluate(gt, pred,epsilon = 1e-7):
+def object_level_evaluate( gt, pred,epsilon = 1e-7):
 
     gt = gt.astype(np.float32)
     pred = pred.astype(np.float32)
@@ -42,21 +42,26 @@ def object_level_evaluate(gt, pred,epsilon = 1e-7):
 
         th = 0.7
         buffer = 5
-        if i == 70:
-            fig, (ax1, ax2) = plt.subplots(1, 2)
+        if False:
+            fig, (ax1, ax2,ax3) = plt.subplots(1, 3,sharex=True, sharey=True)
+
 
             ax1.imshow(gt[i], cmap='gray')
-            for item in gt_polygons:
-                x, y = item.exterior.xy
-                ax1.plot(x, y)
-
+            # for item in gt_polygons:
+            #     # x, y = item.buffer(buffer).exterior.xy
+            #     ax1.plot(x, y)
+            ax1.set_title('GT')
 
             ax2.imshow(pred[i], cmap='gray')
+
+            ax2.set_title('PRED')
+
+            ax3.imshow(pred[i], cmap='gray')
             for item in pred_polygons:
                 x, y = item.exterior.xy
-                ax2.plot(x, y)
-                x, y = item.buffer(buffer).exterior.xy
-                ax2.plot(x, y)
+                ax3.plot(x, y)
+            ax3.set_title('PRED')
+
 
             plt.show()
 
@@ -133,6 +138,7 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
 
     # iterate over the validation set
     with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
+        image_batches,true_mask_batches, pred_batches = [],[],[]
         for batch in tqdm(dataloader, total=num_val_batches, desc='Validation round', unit='batch', leave=False):
             image, mask_true = batch['image'], batch['mask']
 
@@ -152,9 +158,10 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
                 image_np = image.squeeze(1).cpu().detach().numpy()
                 epoch_suf = '_epoch' + str(epoch)
                 if epoch % 2 == 0:
-                    np.save(out_path+'/mask_pred_valid'+epoch_suf,mask_pred_np)
+                    pred_batches.append(mask_pred_np)
                 if epoch == 1:
-                    np.save(out_path+'/image_valid_test',image_np)
+                    image_batches.append(image_np)
+                    true_mask_batches.append(mask_true_np)
                     np.save(out_path+'/mask_true_valid',mask_true_np)
 
                 # plot for testing
@@ -189,5 +196,14 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
                 # compute the Dice score, ignoring background
                 dice_score += multiclass_dice_coeff(mask_pred[:, 1:], mask_true[:, 1:], reduce_batch_first=False)
 
+
+        if epoch == 1:
+            image = np.concatenate(image_batches)
+            mask_true = np.concatenate(true_mask_batches)
+            np.save(out_path + '/image_valid_test', image)
+            np.save(out_path + '/mask_true_valid', mask_true)
+
+        mask_pred = np.concatenate(pred_batches)
+        np.save(out_path + '/mask_pred_valid'+epoch_suf,mask_pred)
     net.train()
     return dice_score / max(num_val_batches, 1)

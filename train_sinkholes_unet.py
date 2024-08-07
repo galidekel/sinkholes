@@ -23,6 +23,7 @@ import logging
 from dice_score import dice_loss
 
 from datetime import datetime
+import pickle
 
 
 
@@ -40,6 +41,7 @@ def train_model(
         batch_size: int = 1,
         learning_rate: float = 1e-5,
         val_percent: float = 0.1,
+        test_percent: float = 0.1,
         save_checkpoint: bool = True,
         img_scale: float = 0.5,
         amp: bool = False,
@@ -62,9 +64,15 @@ def train_model(
     if args.partition_mode == 'random_by_patch':
         logging.info('Creating Dataset: Randlomly partitioning by patches')
         dataset = SubsiDataset(args,image_dir,mask_dir)
-        n_val = int(len(dataset) * val_percent)
-        n_train = len(dataset) - n_val
-        train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
+        n_total = int(len(dataset))
+        n_val = n_total * val_percent
+        n_test = n_total * test_percent
+        n_train = n_total - n_val - n_test
+        train_set, temp_set = random_split(dataset, [n_train, n_total - n_train], generator=torch.Generator().manual_seed(0))
+        val_set, test_set = random_split(temp_set, [n_val, n_test], generator=torch.Generator().manual_seed())
+        with open('test_dataset.pkl', 'wb') as f:
+            pickle.dump(test_set, f)
+
     elif args.partition_mode == 'random_by_intf':
         logging.info('Creating Dataset: Randlomly partitioning by Interferograms !!!')
         intf_list = listdir(image_dir)
@@ -213,6 +221,8 @@ def get_args():
     parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
     parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
                         help='Percent of the data that is used as validation (0-100)')
+    parser.add_argument('--test', dest='test', type=float, default=10.0,
+                        help='Percent of the data that is used as test (0-100)')
     parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
     parser.add_argument('--classes', '-c', type=int, default=1, help='Number of classes')
@@ -265,6 +275,10 @@ if __name__ == '__main__':
 
     dir_checkpoint = Path(outpath + 'checkpoints/')
     dir_validation = Path(outpath + 'validation/')
+    dir_test = Path(outpath + 'test_set/')
+
+
+
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #device = get_default_device()
@@ -281,12 +295,6 @@ if __name__ == '__main__':
                  f'\t{model.n_classes} output channels (classes)\n'
                  f'\t{"Bilinear" if model.bilinear else "Transposed conv"} upscaling')
 
-    if args.load:
-        state_dict = torch.load(args.load, map_location=device)
-        del state_dict['mask_values']
-        model.load_state_dict(state_dict)
-        logging.info(f'Model loaded from {args.load}')
-
     model.to(device=device)
     try:
         train_model(
@@ -298,6 +306,7 @@ if __name__ == '__main__':
             device=device,
             img_scale=args.scale,
             val_percent=args.val / 100,
+            test_percent = args.test / 100,
             amp=args.amp
         )
     except torch.cuda.OutOfMemoryError:
