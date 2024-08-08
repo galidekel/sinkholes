@@ -203,7 +203,8 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
             np.save(out_path + '/image_valid_test', image)
             np.save(out_path + '/mask_true_valid', mask_true)
 
-        mask_pred = np.concatenate(pred_batches)
+        if epoch % 2 == 0:
+            mask_pred = np.concatenate(pred_batches)
         np.save(out_path + '/mask_pred_valid'+epoch_suf,mask_pred)
     net.train()
     return dice_score / max(num_val_batches, 1)
