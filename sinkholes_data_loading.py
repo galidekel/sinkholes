@@ -81,9 +81,6 @@ class SubsiDataset(Dataset):
         if not self.ids:
             raise RuntimeError(f'No input file found in {image_dir}, make sure you put your images there')
 
-
-
-
         self.image_data,self.mask_data,self.index_map = [],[],[]
         for i,id in enumerate(self.ids):
             if args.partition_mode != 'spatial':
