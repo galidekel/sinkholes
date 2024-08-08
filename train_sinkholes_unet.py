@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 #from data_loading import *
 #from mac_gpu import *
+import io
 
 # import wandb
 from evaluate import evaluate
@@ -24,8 +25,6 @@ from dice_score import dice_loss
 
 from datetime import datetime
 import pickle
-
-
 
 def str2bool(arg):
     if arg.lower() == 'true':
@@ -65,13 +64,25 @@ def train_model(
         logging.info('Creating Dataset: Randlomly partitioning by patches')
         dataset = SubsiDataset(args,image_dir,mask_dir)
         n_total = int(len(dataset))
-        n_val = n_total * val_percent
-        n_test = n_total * test_percent
+        n_val = int(n_total * val_percent)
+        n_test = int(n_total * test_percent)
         n_train = n_total - n_val - n_test
         train_set, temp_set = random_split(dataset, [n_train, n_total - n_train], generator=torch.Generator().manual_seed(0))
-        val_set, test_set = random_split(temp_set, [n_val, n_test], generator=torch.Generator().manual_seed())
+        val_set, test_set = random_split(temp_set, [n_val, n_test], generator=torch.Generator().manual_seed(0))
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)) )
-        with open('test_dataset.pkl', 'wb') as f:
+        buffer = io.BytesIO()
+        pickle.dump(test_set, buffer)
+
+        # Get the size in bytes
+        size_in_bytes = buffer.tell()
+
+        # Convert bytes to gigabytes
+        size_in_gb = size_in_bytes / (1024 ** 3)
+
+        logging.info(f"Estimated size of test_Dataset: {size_in_gb:.2f} GB")
+
+
+        with open(outpath+'test_dataset.pkl', 'wb') as f:
             pickle.dump(test_set, f)
 
     elif args.partition_mode == 'random_by_intf':
@@ -276,7 +287,7 @@ if __name__ == '__main__':
 
     dir_checkpoint = Path(outpath + 'checkpoints/')
     dir_validation = Path(outpath + 'validation/')
-    dir_test = Path(outpath + 'test_set/')
+    dir_test = Path(outpath)
 
 
 
