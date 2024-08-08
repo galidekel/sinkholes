@@ -162,7 +162,6 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
                 if epoch == 1:
                     image_batches.append(image_np)
                     true_mask_batches.append(mask_true_np)
-                    np.save(out_path+'/mask_true_valid',mask_true_np)
 
                 # plot for testing
                 if is_local and False:
@@ -205,6 +204,6 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
 
         if epoch % 2 == 0:
             mask_pred = np.concatenate(pred_batches)
-        np.save(out_path + '/mask_pred_valid'+epoch_suf,mask_pred)
+            np.save(out_path + '/mask_pred_valid'+epoch_suf,mask_pred)
     net.train()
     return dice_score / max(num_val_batches, 1)
