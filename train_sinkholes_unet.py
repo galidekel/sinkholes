@@ -91,14 +91,38 @@ def train_model(
         unique_intf_list = [file for file in intf_list if 'nonz' in (file)] if args.nonz_only else [file for file in intf_list if 'nonz' not in (file)]
         random.shuffle(unique_intf_list)
         n_val = int(len(unique_intf_list)*(val_percent))
-        n_train = len(unique_intf_list) - n_val
+        n_test = int(len(unique_intf_list)*(test_percent))
+        n_train = len(unique_intf_list) - n_val - n_test
         if n_val == 0:
             logging.info('not enough data for partitioning by interferograms !!')
             sys.exit(0)
         train_list = unique_intf_list[:n_train]
-        val_list = unique_intf_list[n_train:]
+        val_list = unique_intf_list[n_train:n_train+n_val]
+        test_list = unique_intf_list[n_train+n_val:]
+
+
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list)
+        test_set = SubsiDataset(args,image_dir, mask_dir, intrfrgrm_list=test_list)
+
+        assert set(train_set.ids).isdisjoint(set(val_set.ids)) and set(train_set.ids).isdisjoint(set(test_set.ids)) and set(val_set.ids).isdisjoint(
+            set(test_set.ids)), 'there are NO common intfs in lists!'
+
+        logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)))
+        buffer = io.BytesIO()
+        pickle.dump(test_set, buffer)
+
+        # Get the size in bytes
+        size_in_bytes = buffer.tell()
+
+        # Convert bytes to gigabytes
+        size_in_gb = size_in_bytes / (1024 ** 3)
+
+        logging.info(f"Estimated size of test_Dataset: {size_in_gb:.2f} GB")
+
+        with open(outpath + 'test_dataset.pkl', 'wb') as f:
+            pickle.dump(test_set, f)
+
     elif args.partition_mode == 'spatial':
         logging.info('Creating Dataset: by spatial partitioning !!!')
         train_set = SubsiDataset(args,image_dir,mask_dir, dset = 'train')
@@ -230,7 +254,7 @@ def get_args():
     parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-5,
                         help='Learning rate', dest='lr')
     parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
-    parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
+    parser.add_argument('--scale', '-s', type=float, default=1.0, help='Downscaling factor of the images')
     parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
                         help='Percent of the data that is used as validation (0-100)')
     parser.add_argument('--test', dest='test', type=float, default=10.0,
