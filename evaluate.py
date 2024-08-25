@@ -129,7 +129,7 @@ def calc_precision_recall (y_pred, y_true):
     return precision, recall
 
 @torch.inference_mode()
-def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
+def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val'):
     net.eval()
     num_val_batches = len(dataloader)
     dice_score = 0
@@ -139,7 +139,7 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
     # iterate over the validation set
     with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
         image_batches,true_mask_batches, pred_batches = [],[],[]
-        for batch in tqdm(dataloader, total=num_val_batches, desc='Validation round', unit='batch', leave=False):
+        for bn, batch in tqdm(enumerate(dataloader), total=num_val_batches, desc='Validation round', unit='batch', leave=False):
             image, mask_true = batch['image'], batch['mask']
 
             # move images and labels to correct device and type
@@ -164,17 +164,18 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
                     true_mask_batches.append(mask_true_np)
 
                 # plot for testing
-                if is_local and False:
+                if is_local and mode == 'test':
                     import matplotlib.pyplot as plt
                     image_np = image.detach().numpy()
                     mask_pred_np = mask_pred.detach().numpy()
                     mask_true_np = mask_true.detach().numpy()
                     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
                     ax1.imshow(image[0,0,:,:])
-                    ax2.imshow(mask_pred_np[0, 0, :, :])
-                    ax2.set_title('predicted mask')
-                    ax3.imshow(mask_true_np[0, 0, :, :])
-                    ax3.set_title('true mask')
+                    ax2.imshow(mask_true_np[0, 0, :, :])
+                    ax2.set_title('true mask')
+                    ax3.imshow(mask_pred_np[0, 0, :, :])
+                    ax3.set_title('predicted mask')
+
                     plt.show()
               #### plt for testing
 
@@ -183,9 +184,6 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch):
                 batch_precision, batch_recall = calc_precision_recall(mask_pred_np, mask_true_np)
                 precision += batch_precision
                 recall += batch_recall
-
-
-
 
             else:
                 assert mask_true.min() >= 0 and mask_true.max() < net.n_classes, 'True mask indices should be in [0, n_classes['

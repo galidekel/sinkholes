@@ -61,7 +61,7 @@ class SubsiDataset(Dataset):
           pref , mask_pref = 'data_patches_', 'mask_patches_'
 
         start_intf_name = len(pref)
-        if args.partition_mode == 'spatial' or args.train_with_nonz_th:
+        if args.partition_mode == 'spatial':
             with open(args.intf_dict_path, 'r') as json_file:
                 coord_dict = json.load(json_file)
 
@@ -69,16 +69,11 @@ class SubsiDataset(Dataset):
             self.ids = [file.split('.')[0][start_intf_name:start_intf_name+17] for file in listdir(image_dir) if ('nonz' in file and args.nonz_only and args.partition_mode!='spatial') or ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'))]
         else:
             self.ids = intrfrgrm_list
+        if (args.test == 0 and dset == 'test'):
+            self.index_map = []
+            return
 
-        if args.train_with_nonz_th:
-            nonz_th_north,nonz_th_south = tuple(args.nonz_th)[0],tuple(args.nonz_th)[1]
-            for intf in self.ids:
-                if (coord_dict[intf]['north'] > 31.5 and coord_dict[intf]['nonz_num'] < nonz_th_north) or (coord_dict[intf]['north'] < 31.5 and coord_dict[intf]['nonz_num']<nonz_th_south):
-                    self.ids.remove(intf)
-
-
-
-        if not self.ids:
+        if not self.ids :
             raise RuntimeError(f'No input file found in {image_dir}, make sure you put your images there')
 
         self.image_data,self.mask_data,self.index_map = [],[],[]
