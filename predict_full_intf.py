@@ -157,7 +157,7 @@ def get_pred_args():
     parser.add_argument('--input_patch_dir',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='patches inputs')
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
-    parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
+    parser.add_argument('--eleven_days_diff',  type=str, default='False', help='Flag to take only 11 days difference interferograms')
 
     parser.add_argument('--intf_source', type=str, default = 'intf_list', choices=['intf_list', 'test_dataset','preset'])
     parser.add_argument('--intf_list', type=str, default = None, help='a list of intf ids divided by comma')
@@ -236,8 +236,8 @@ if __name__ == '__main__':
     logging.info('Model loaded!')
 
     patch_H, patch_W = args.patch_size
-    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '')
-    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '')
+    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '_all')
+    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '_all')
 
     for intf in intf_list:
 
