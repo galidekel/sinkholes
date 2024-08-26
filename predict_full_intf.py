@@ -218,7 +218,7 @@ if __name__ == '__main__':
         logging.info('taking test intfs from partition {}. intf list: {}'.format(args.valset_from_partition,intf_list))
 
     else:
-        with open(args.test_dataset, 'rb') as file:
+        with open('./test_data/'+args.test_dataset, 'rb') as file:
             test_data = pickle.load(file)
 
         intf_list = test_data.ids
