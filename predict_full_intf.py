@@ -1,4 +1,5 @@
 import sys
+import pickle
 
 import torch
 import torch.nn.functional as F
@@ -157,15 +158,18 @@ def get_pred_args():
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--eleven_days_diff',  type=str, default='True', help='Flag to take only 11 days difference interferograms')
+
+    parser.add_argument('--intf_source', type=str, default = 'intf_list', choices=['intf_list', 'test_dataset','preset'])
     parser.add_argument('--intf_list', type=str, default = None, help='a list of intf ids divided by comma')
+    parser.add_argument('--test_dataset', type=str, default = None, help='path to teset_dastset')
+    parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
 
     parser.add_argument('--model', '-m', default='checkpoint_epoch28.pth', metavar='FILE',
                         help='Specify the file in which the model is stored')
 
     parser.add_argument('--data_stride', type=int, default=2)
-    parser.add_argument('--recon_th', type=float, default=0.5)
+    parser.add_argument('--recon_th', type=float, default=0.25)
 
-    parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
     parser.add_argument('--job_name', type=str, default='job', help='unique job name')
     parser.add_argument('--add_lidar_mask', type=str,default='True')
 
@@ -193,20 +197,37 @@ if __name__ == '__main__':
         logging.info(f"Directory '{output_path}' created successfully")
     except FileExistsError:
         logging.info(f"Directory '{output_path}' already exists")
-    except Exception as e:
-        logging.info(f"An error occurred: {e}")
+
     log_file = output_path + args.job_name + '_' + now + '.log'
     file_handler = logging.FileHandler(log_file)
     logging.getLogger().addHandler(file_handler)
 
     logging.info('Running job {} with model {}.pth and args: {}'.format(job_name, model_name, args))
 
-    net = UNet(n_channels=1, n_classes=1, bilinear=False)
+    if (args.intf_source == 'intf_list' and args.intf_list is None) or (args.intf_source == 'test_dataset' and args.test_dataset is None) or (args.intf_source == 'preset' and args.preset is None) :
+        logging.info('you chose to take intfs from '+args.intf_source + ' but it is None. exiting.')
+        sys.exit()
 
+    if args.intf_source =='intf_list':
+        intf_list = args.intf_list.split(',')
+
+    elif args.intf_source == 'preset':
+        with open(args.valset_from_partition, 'r') as file:
+            loaded_data = json.load(file)
+        intf_list = loaded_data['val']
+        logging.info('taking test intfs from partition {}. intf list: {}'.format(args.valset_from_partition,intf_list))
+
+    else:
+        with open(args.test_dataset, 'rb') as file:
+            test_data = pickle.load(file)
+
+        intf_list = test_data.ids
+        logging.info('taking test intfs from test dataset {}. intf list: {}'.format(args.test_dataset, intf_list))
+
+    net = UNet(n_channels=1, n_classes=1, bilinear=False)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Loading model {args.model}')
     logging.info(f'Using device {device}')
-
     net.to(device=device)
     state_dict = torch.load('./models/'+args.model, map_location=device)
     mask_values = state_dict.pop('mask_values', [0, 1])
@@ -214,23 +235,9 @@ if __name__ == '__main__':
     net.eval()
     logging.info('Model loaded!')
 
-
-
     patch_H, patch_W = args.patch_size
     data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '')
     mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '')
-    if args.valset_from_partition is not None:
-        with open(args.valset_from_partition, 'r') as file:
-            loaded_data = json.load(file)
-            intf_list = loaded_data['val']
-            logging.info('taking test intfs from partition {}. test list: {}'.format(args.valset_from_partition,intf_list))
-
-    elif args.intf_list is not None:
-        intf_list = args.intf_list.split(',')
-    else:
-        intf_list = [file[13:30] for file in listdir(data_dir) if 'nonz' not in file]
-
-
 
     for intf in intf_list:
 
