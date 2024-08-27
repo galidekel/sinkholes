@@ -72,11 +72,13 @@ def train_model(
 
         with open(args.intf_dict_path, 'r') as json_file:
             coord_dict = json.load(json_file)
-            nonz_th_north, nonz_th_south = tuple(args.nonz_th)[0], tuple(args.nonz_th)[1]
-            for intf in intf_list:
-                if (coord_dict[intf]['north'] > 31.5 and coord_dict[intf]['nonz_num'] < nonz_th_north) or (
-                        coord_dict[intf]['north'] < 31.5 and coord_dict[intf]['nonz_num'] < nonz_th_south):
-                    intf_list.remove(intf)
+        nonz_th_north, nonz_th_south = tuple(args.nonz_th)[0], tuple(args.nonz_th)[1]
+        filtered_list = []
+        for intf in intf_list:
+            if (coord_dict[intf]['north'] > 31.5 and coord_dict[intf]['nonz_num'] > nonz_th_north) or (
+                    coord_dict[intf]['north'] < 31.5 and coord_dict[intf]['nonz_num'] > nonz_th_south):
+                filtered_list.append(intf)
+        intf_list = filtered_list
         n2 = len(intf_list)
         logging.info('filtered list has {} nonz'.format(n2))
 
