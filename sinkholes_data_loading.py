@@ -86,18 +86,17 @@ class SubsiDataset(Dataset):
                     mask_data = mask_data.reshape(-1,mask_data.shape[2],mask_data.shape[3])
             else:
 
-                intf_id = id[:17]
-                stride = math.floor(args.patch_size[0]/2) *coord_dict[intf_id]["dY"]
+                stride = math.floor(args.patch_size[0]/2) *coord_dict[id]["dy"]
 
-                thresh_line = math.floor((coord_dict[intf_id]["north"] - args.thresh_lat) / stride)
+                thresh_line = math.floor((coord_dict[id]["north"] - args.thresh_lat) / stride)
                 if thresh_line < 0:
                     thresh_line = 0
                 if dset == 'train':
-                    image_data = np.load(join(self.image_dir, pref + id + '.npy'))[:thresh_line]
-                    mask_data = np.load(join(self.mask_dir, mask_pref + id + '.npy'))[:thresh_line]
+                    image_data =  np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + '.npy'))[:thresh_line]
+                    mask_data =  np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))[:thresh_line]
                 else:
-                    image_data = np.load(join(self.image_dir, pref + id + '.npy'))[thresh_line:]
-                    mask_data = np.load(join(self.mask_dir, mask_pref + id + '.npy'))[thresh_line:]
+                    image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + '.npy'))[thresh_line:]
+                    mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))[thresh_line:]
                 image_data = image_data.reshape(-1, image_data.shape[2], image_data.shape[3])
                 mask_data = mask_data.reshape(-1, mask_data.shape[2], mask_data.shape[3])
                 if args.nonz_only:
