@@ -146,11 +146,19 @@ def train_model(
 
     elif args.partition_mode == 'spatial':
         logging.info('Creating Dataset: by spatial partitioning !!!')
-        train_set = SubsiDataset(args,image_dir,mask_dir, dset = 'train')
-        val_set = SubsiDataset(args,image_dir,mask_dir, dset = 'val')
+        train_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'train')
+        valtmp_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'val')
         n_train = len(train_set)
-        n_val = len(val_set)
-        logging.info('Spatial partitioning: Val percent is ' + str(int(100*n_val/(n_train+n_val))) + '%')
+        n_valtmp = len(valtmp_set)
+        n_val = n_valtmp//2
+        n_test = n_valtmp - n_val
+        val_set,test_set = random_split(valtmp_set, [n_val,n_test])
+
+
+
+        logging.info('Spatial partitioning: Val percent is ' + str(int(100*n_val/(n_train+n_val+n_test))) + '%')
+        logging.info('Spatial partitioning: test percent is ' + str(int(100*n_test/(n_train+n_val+n_test))) + '%')
+
     elif args.partition_mode == 'preset_by_intf':
         logging.info('Creating Dataset: preset partition by intf \n partiotion file: '+args.partition_file)
         with open(args.partition_file, 'r') as file:
