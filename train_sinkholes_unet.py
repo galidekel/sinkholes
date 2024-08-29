@@ -160,6 +160,8 @@ def train_model(
 
         logging.info('Spatial partitioning: Val percent is ' + str(int(100*n_val/(n_train+n_val+n_test))) + '%')
         logging.info('Spatial partitioning: test percent is ' + str(int(100*n_test/(n_train+n_val+n_test))) + '%')
+        with open(outpath+'test_dataset_'+args.job_name+'.pkl', 'wb') as f:
+            pickle.dump(test_set, f)
 
     elif args.partition_mode == 'preset_by_intf':
         logging.info('Creating Dataset: preset partition by intf \n partiotion file: '+args.partition_file)
