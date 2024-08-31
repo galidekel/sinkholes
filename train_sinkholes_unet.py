@@ -299,6 +299,9 @@ def get_args():
     parser.add_argument('--stride',  type = int, default=2, help='train on patchs with given strides per window')
 
     parser.add_argument('--nonz_only', type = str, default='True', help='train only on non zero mask patches')
+
+    parser.add_argument('--add_nulls_to_train', type = str, default='False', help='add patches with 0 sharp values')
+
     parser.add_argument('--patches_dir', type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='path to patches')
     parser.add_argument('--partition_mode', type=str, default='random_by_patch', choices=['random_by_patch', 'random_by_intf','spatial','preset_by_intf'], help='partition mode')
     parser.add_argument('--partition_file', type=str, default='partition_20_05_13h45.json', help=('preset partition file'))
@@ -341,6 +344,7 @@ if __name__ == '__main__':
     args.train_on_11d_diff = str2bool(args.train_on_11d_diff)
     args.nonz_only = str2bool(args.nonz_only)
     args.train_with_nonz_th = str2bool(args.train_with_nonz_th)
+    args.add_nulls_to_train = str2bool(args.add_nulls_to_train)
 
     dir_checkpoint = Path(outpath + 'checkpoints/')
     dir_validation = Path(outpath + 'validation/')

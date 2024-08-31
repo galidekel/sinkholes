@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-
+import random
 import numpy as np
 import torch
 from PIL import Image
@@ -42,6 +42,22 @@ def unique_mask_values(idx, mask_dir, mask_suffix):
         raise ValueError(f'Loaded masks should have 2 or 3 dimensions, found {mask.ndim}')
 
 
+def has_consecutive_zeros(arr, min_consecutive=10,max_consecutive=1000):
+    # Check rows
+    row_check = np.apply_along_axis(
+        lambda x: np.any(np.convolve(x == 0, np.ones(min_consecutive, dtype=int), 'valid') == min_consecutive),
+        axis=1,
+        arr=arr
+    )
+
+    # Check columns
+    col_check = np.apply_along_axis(
+        lambda x: np.any(np.convolve(x == 0, np.ones(min_consecutive, dtype=int), 'valid') == min_consecutive),
+        axis=0,
+        arr=arr
+    )
+
+    return np.any(row_check) or np.any(col_check)
 class SubsiDataset(Dataset):
     def __init__(self,args, image_dir, mask_dir, intrfrgrm_list=None, scale: float = 1.0, mask_suffix: str = '',dset = 'train' ):
         super(SubsiDataset, self).__init__()
@@ -55,7 +71,7 @@ class SubsiDataset(Dataset):
             assert intrfrgrm_list is not None, "Partition mode 'preset by intf' requires an input intrfrgrm list"
         self.scale = scale
         self.mask_suffix = mask_suffix
-        if args.nonz_only and args.partition_mode != 'spatial':
+        if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train:
           pref , mask_pref = 'data_patches_nonz_','mask_patches_nonz_'
         else:
           pref , mask_pref = 'data_patches_', 'mask_patches_'
@@ -78,12 +94,37 @@ class SubsiDataset(Dataset):
 
         self.image_data,self.mask_data,self.index_map = [],[],[]
         for i,id in enumerate(self.ids):
+
             if args.partition_mode != 'spatial':
                 image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + '.npy'))
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))
-                if not args.nonz_only:
+                if not args.nonz_only or args.add_nulls_to_train:
                     image_data = image_data.reshape(-1,image_data.shape[2],image_data.shape[3])
                     mask_data = mask_data.reshape(-1,mask_data.shape[2],mask_data.shape[3])
+
+                    if args. nonz_only:
+                        image_patches = []
+                        mask_patches = []
+
+                        for j in range(image_data.shape[0]):
+                            image_patch = image_data[j]
+                            mask_patch = mask_data[j]
+                            add_null_patch = False
+                            if random.choice([True, False]) and not np.any(mask_patch>0):
+                                count = np.sum(image_patch== 0) < 1000
+                                cons_zeros = has_consecutive_zeros(image_patch)
+                                if count and cons_zeros:
+                                    add_null_patch = True
+
+                                
+                            if np.any(mask_patch>0) or ( add_null_patch ):
+                                image_patches.append(image_patch)
+                                mask_patches.append(mask_patch)
+
+                        print('number of patches with nulls: {}'.format(len(image_patches)))
+                        print('from {} patches'.format(image_data.shape[0]))
+                        image_data= np.array(image_patches)
+                        mask_data= np.array(mask_patches)
             else:
 
                 stride = math.floor(args.patch_size[0]/2) *coord_dict[id]["dy"]
