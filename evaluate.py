@@ -90,12 +90,12 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7):
         # print('object level recall score:', ol_intersection_recall)
 
 
-    batch_intersect_recall = round(np.sum(np.array(intersect_recall)*np.array(patch_gt_areas))/np.sum(np.array(patch_gt_areas)),2)
-    batch_intersect_precision = round(np.sum(np.array(intersect_precision)*np.array(patch_gt_areas))/np.sum(np.array(patch_gt_areas)),2)
-    print('batch intersect recall:',batch_intersect_recall)
-    print('batch intersect precision:',batch_intersect_precision)
+    ol_batch_recall = round(np.sum(np.array(intersect_recall)*np.array(patch_gt_areas))/np.sum(np.array(patch_gt_areas)),2)
+    ol_batch_precision = round(np.sum(np.array(intersect_precision)*np.array(patch_gt_areas))/np.sum(np.array(patch_gt_areas)),2)
+    print('ol batch recall:',ol_batch_recall)
+    print('ol batch precision:',ol_batch_precision)
 
-    return batch_intersect_recall, batch_intersect_precision
+    return ol_batch_recall, ol_batch_precision
 
 def precision1(gt, pred, epsilon=1e-7):
     # Convert arrays to boolean arrays
@@ -135,6 +135,8 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
     dice_score = 0
     precision = 0
     recall = 0
+    ol_precision = 0
+    ol_recall = 0
 
     # iterate over the validation set
     with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
@@ -181,9 +183,13 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
 
                 # compute the Dice score
                 dice_score += dice_coeff(mask_pred, mask_true, reduce_batch_first=False)
-                batch_precision, batch_recall = calc_precision_recall(mask_pred_np, mask_true_np)
-                precision += batch_precision
-                recall += batch_recall
+                if mode == 'test':
+                    batch_precision, batch_recall = calc_precision_recall(mask_pred_np, mask_true_np)
+                    olr, olp = object_level_evaluate(mask_true_np, mask_pred_np)
+                    precision += batch_precision
+                    recall += batch_recall
+                    ol_precision += olp
+                    ol_recall +=olr
 
             else:
                 assert mask_true.min() >= 0 and mask_true.max() < net.n_classes, 'True mask indices should be in [0, n_classes['
@@ -194,7 +200,7 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
                 dice_score += multiclass_dice_coeff(mask_pred[:, 1:], mask_true[:, 1:], reduce_batch_first=False)
 
 
-        if epoch == 1:
+        if epoch == 1 and mode == 'val':
             image = np.concatenate(image_batches)
             mask_true = np.concatenate(true_mask_batches)
             np.save(out_path + '/image_valid_test', image)
@@ -204,4 +210,16 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
             mask_pred = np.concatenate(pred_batches)
             np.save(out_path + '/mask_pred_valid'+epoch_suf,mask_pred)
     net.train()
-    return dice_score / max(num_val_batches, 1)
+    mean_dice_score = dice_score / max(num_val_batches, 1)
+    if mode == 'test':
+        mean_p = precision / num_val_batches
+        mean_r = recall / num_val_batches
+        mean_ol_p = ol_precision/num_val_batches
+        mean_ol_r = ol_recall / num_val_batches
+
+        print('Mean pixel level Precision: {}'.format(mean_p))
+        print('Mean pixel level Recall: {}'.format(mean_r))
+
+        print('Mean OL Precision: {}'.format(mean_ol_p))
+        print('Mean OL Recall: {}'.format(mean_ol_r))
+    return mean_dice_score
