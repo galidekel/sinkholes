@@ -18,6 +18,9 @@ import geopandas as gpd
 from unet import *
 import logging
 
+#plt.rcParams['backend'] = 'Qt5Agg'
+
+
 def object_level_evaluate( gt, pred,epsilon = 1e-7):
 
     gt = gt.astype(np.float32)
@@ -40,8 +43,8 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7):
             if val > 0:  # Assuming binary mask has values 0 and 1
                 pred_polygons.append(shape(geom))
 
-        th = 0.7
-        buffer = 5
+        th = 0.5
+        buffer = 8
         if False:
             fig, (ax1, ax2,ax3) = plt.subplots(1, 3,sharex=True, sharey=True)
 
@@ -89,13 +92,13 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7):
         # print('{}: object level precision score:'.format(i), ol_intersection_precision)
         # print('object level recall score:', ol_intersection_recall)
 
-
-    ol_batch_recall = round(np.sum(np.array(intersect_recall)*np.array(patch_gt_areas))/np.sum(np.array(patch_gt_areas)),2)
-    ol_batch_precision = round(np.sum(np.array(intersect_precision)*np.array(patch_gt_areas))/np.sum(np.array(patch_gt_areas)),2)
+    batch_gt_area = np.sum(np.array(patch_gt_areas))
+    ol_batch_recall = round(np.sum(np.array(intersect_recall)*np.array(patch_gt_areas))/batch_gt_area,2)
+    ol_batch_precision = round(np.sum(np.array(intersect_precision)*np.array(patch_gt_areas))/batch_gt_area,2)
     print('ol batch recall:',ol_batch_recall)
     print('ol batch precision:',ol_batch_precision)
 
-    return ol_batch_recall, ol_batch_precision
+    return ol_batch_recall, ol_batch_precision,batch_gt_area
 
 def precision1(gt, pred, epsilon=1e-7):
     # Convert arrays to boolean arrays
@@ -140,7 +143,7 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
 
     # iterate over the validation set
     with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
-        image_batches,true_mask_batches, pred_batches = [],[],[]
+        image_batches,true_mask_batches, pred_batches, b_gts = [],[],[],[]
         for bn, batch in tqdm(enumerate(dataloader), total=num_val_batches, desc='Validation round', unit='batch', leave=False):
             image, mask_true = batch['image'], batch['mask']
 
@@ -172,11 +175,16 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
                     mask_pred_np = mask_pred.detach().numpy()
                     mask_true_np = mask_true.detach().numpy()
                     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-                    ax1.imshow(image[0,0,:,:])
+                    sc1 = ax1.imshow(image[0,0,:,:])
+                    ax1.set_title('Input Patch')
+                    #cbar = fig.colorbar(sc1, ax=ax1,orientation='vertical',aspect = 20)
+
                     ax2.imshow(mask_true_np[0, 0, :, :])
-                    ax2.set_title('true mask')
+                    ax2.set_yticks([])
+                    ax2.set_title('True Mask')
                     ax3.imshow(mask_pred_np[0, 0, :, :])
-                    ax3.set_title('predicted mask')
+                    ax3.set_yticks([])
+                    ax3.set_title('Predicted Mask')
 
                     plt.show()
               #### plt for testing
@@ -185,11 +193,12 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
                 dice_score += dice_coeff(mask_pred, mask_true, reduce_batch_first=False)
                 if mode == 'test':
                     batch_precision, batch_recall = calc_precision_recall(mask_pred_np, mask_true_np)
-                    olr, olp = object_level_evaluate(mask_true_np, mask_pred_np)
+                    olr, olp, b_gt_a = object_level_evaluate(mask_true_np, mask_pred_np)
                     precision += batch_precision
                     recall += batch_recall
-                    ol_precision += olp
-                    ol_recall +=olr
+                    ol_precision += olp * b_gt_a
+                    ol_recall +=olr * b_gt_a
+                    b_gts.append(b_gt_a)
 
             else:
                 assert mask_true.min() >= 0 and mask_true.max() < net.n_classes, 'True mask indices should be in [0, n_classes['
@@ -212,11 +221,12 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
     net.train()
     mean_dice_score = dice_score / max(num_val_batches, 1)
     if mode == 'test':
-        mean_p = precision / num_val_batches
-        mean_r = recall / num_val_batches
-        mean_ol_p = ol_precision/num_val_batches
-        mean_ol_r = ol_recall / num_val_batches
+        mean_p = round(precision / num_val_batches,2)
+        mean_r = round(recall / num_val_batches,2)
+        mean_ol_p = round(ol_precision/sum(b_gts),2)
+        mean_ol_r = round(ol_recall / sum(b_gts),2)
 
+        print('mean dice score: ', mean_dice_score)
         print('Mean pixel level Precision: {}'.format(mean_p))
         print('Mean pixel level Recall: {}'.format(mean_r))
 
