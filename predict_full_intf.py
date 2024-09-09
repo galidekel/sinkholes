@@ -191,7 +191,7 @@ if __name__ == '__main__':
         args.plot = False
     job_name = args.job_name +'_'+ now
     model_name = args.model.split('.')[0]
-    output_path = 'pred_outputs/' + model_name + '/' + job_name + '/'
+    output_path = 'pred_outputs2/' + model_name + '/' + job_name + '/'
     try:
         os.makedirs(output_path)
         logging.info(f"Directory '{output_path}' created successfully")
