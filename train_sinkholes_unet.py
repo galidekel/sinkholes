@@ -3,7 +3,7 @@ import logging
 import os
 import random
 import sys
-import torch
+
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
@@ -155,6 +155,8 @@ def train_model(
         n_val = n_valtmp//2
         n_test = n_valtmp - n_val
         val_set,test_set = random_split(valtmp_set, [n_val,n_test])
+        logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)) )
+
 
 
 
@@ -269,7 +271,7 @@ def train_model(
         Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
 
 
-        val_score = evaluate(model, val_loader, device, amp, is_local=is_running_locally,out_path=str(dir_validation),epoch = epoch)
+        val_score = evaluate(model, val_loader, device, amp, is_local=is_running_locally,out_path=str(dir_validation),epoch = epoch,save_val = args.save_val)
         scheduler.step(val_score)
 
         logging.info('Epoch {} Validation Dice score: {}'.format(epoch,val_score))
@@ -312,6 +314,8 @@ def get_args():
     parser.add_argument('--thresh_lat', type=float, default=31.4)
     parser.add_argument('--train_with_nonz_th', type = str, default='False', help='train only on non zero mask patches')
     parser.add_argument('--nonz_th',  nargs = '+', type = int, default=[350,150], help='north, south')
+    parser.add_argument('--save_val', type = str, default='False', help='train only on non zero mask patches')
+
 
 
 
@@ -345,6 +349,8 @@ if __name__ == '__main__':
     args.nonz_only = str2bool(args.nonz_only)
     args.train_with_nonz_th = str2bool(args.train_with_nonz_th)
     args.add_nulls_to_train = str2bool(args.add_nulls_to_train)
+    args.save_val = str2bool(args.save_val)
+
 
     dir_checkpoint = Path(outpath + 'checkpoints/')
     dir_validation = Path(outpath + 'validation/')

@@ -21,7 +21,7 @@ import logging
 #plt.rcParams['backend'] = 'Qt5Agg'
 
 
-def object_level_evaluate( gt, pred,epsilon = 1e-7):
+def object_level_evaluate( gt, pred,epsilon = 1e-7,th=0.7,buffer=5):
 
     gt = gt.astype(np.float32)
     pred = pred.astype(np.float32)
@@ -34,7 +34,7 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7):
         # Convert binary mask to Shapely polygons
         gt_polygons,pred_polygons = [], []
 
-
+        ###create polygons
         for geom, val in rasterio.features.shapes(gt[i], transform=transform):
             if val > 0:  # Assuming binary mask has values 0 and 1
                 gt_polygons.append(shape(geom))
@@ -43,31 +43,7 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7):
             if val > 0:  # Assuming binary mask has values 0 and 1
                 pred_polygons.append(shape(geom))
 
-        th = 0.5
-        buffer = 8
-        if False:
-            fig, (ax1, ax2,ax3) = plt.subplots(1, 3,sharex=True, sharey=True)
-
-
-            ax1.imshow(gt[i], cmap='gray')
-            # for item in gt_polygons:
-            #     # x, y = item.buffer(buffer).exterior.xy
-            #     ax1.plot(x, y)
-            ax1.set_title('GT')
-
-            ax2.imshow(pred[i], cmap='gray')
-
-            ax2.set_title('PRED')
-
-            ax3.imshow(pred[i], cmap='gray')
-            for item in pred_polygons:
-                x, y = item.exterior.xy
-                ax3.plot(x, y)
-            ax3.set_title('PRED')
-
-
-            plt.show()
-
+        ###start calculation for patch
         intersection_area= 0
         total_pred_area = sum(pp.area for pp in pred_polygons)
         total_gt_area = sum(pgt.area for pgt in gt_polygons)
@@ -78,7 +54,32 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7):
             for pp in pred_polygons:
                 buffered_pp = pp.buffer(buffer)
                 intersection += pgt.intersection(buffered_pp).area/pgt.area
+                if False:
+                    x, y = pp.exterior.xy
+                    x1, y1 = buffered_pp.exterior.xy
+                    x2, y2 = pgt.exterior.xy
+                    fig, [ax1, ax2] = plt.subplots(1, 2, sharex=True, sharey=True)
+                    ax1.imshow(gt[i], cmap='gray')
+                    ax1.set_title('Ground Truth Mask')
+                    ax1.plot(x2, y2, color='green')
+                    ax2.imshow(pred[i], cmap='gray')
+                    ax2.set_title('Predicted Mask')
+                    ax2.plot(x, y, color='orange')
 
+                    plt.show()
+
+
+                    fig, [ax1,ax2] = plt.subplots(1, 2, sharex=True, sharey=True)
+
+                    ax1.imshow(gt[i], cmap='gray')
+                    ax1.set_title('Ground Truth Mask')
+                    ax2.imshow(pred[i], cmap='gray')
+                    ax2.set_title('Predicted Mask')
+                    ax2.plot(x, y,color='orange')
+                    ax2.plot(x1, y1, color='blue')
+                    ax2.plot(x2, y2,color='green')
+
+                    plt.show()
             if intersection > th:
                 intersection_area += pgt.area
         ol_intersection_recall = round(intersection_area / (total_gt_area + epsilon),2)
@@ -132,7 +133,7 @@ def calc_precision_recall (y_pred, y_true):
     return precision, recall
 
 @torch.inference_mode()
-def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val'):
+def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val',save_val = False):
     net.eval()
     num_val_batches = len(dataloader)
     dice_score = 0
@@ -158,7 +159,7 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
                 mask_true = mask_true.unsqueeze(1)
                 assert mask_true.min() >= 0 and mask_true.max() <= 1, 'True mask indices should be in [0, 1]'
                 mask_pred = (F.sigmoid(mask_pred) > 0.5).float()
-                mask_pred_np = mask_pred.squeeze(1).cpu().detach().numpy()
+                mask_pred_np = mask_pred.squeeze(1).cpu().detach().numpy() #squeeze to (b,H,W) when saving npy
                 mask_true_np = mask_true.squeeze(1).cpu().detach().numpy()
                 image_np = image.squeeze(1).cpu().detach().numpy()
                 epoch_suf = '_epoch' + str(epoch)
@@ -171,18 +172,16 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
                 # plot for testing
                 if is_local and mode == 'test':
                     import matplotlib.pyplot as plt
-                    image_np = image.detach().numpy()
-                    mask_pred_np = mask_pred.detach().numpy()
-                    mask_true_np = mask_true.detach().numpy()
+
                     fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-                    sc1 = ax1.imshow(image[0,0,:,:])
+                    sc1 = ax1.imshow(image_np[0,:,:])
                     ax1.set_title('Input Patch')
                     #cbar = fig.colorbar(sc1, ax=ax1,orientation='vertical',aspect = 20)
 
-                    ax2.imshow(mask_true_np[0, 0, :, :])
+                    ax2.imshow(mask_true_np[0, :, :])
                     ax2.set_yticks([])
                     ax2.set_title('True Mask')
-                    ax3.imshow(mask_pred_np[0, 0, :, :])
+                    ax3.imshow(mask_pred_np[0, :, :])
                     ax3.set_yticks([])
                     ax3.set_title('Predicted Mask')
 
@@ -193,7 +192,7 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
                 dice_score += dice_coeff(mask_pred, mask_true, reduce_batch_first=False)
                 if mode == 'test':
                     batch_precision, batch_recall = calc_precision_recall(mask_pred_np, mask_true_np)
-                    olr, olp, b_gt_a = object_level_evaluate(mask_true_np, mask_pred_np)
+                    olr, olp, b_gt_a = object_level_evaluate(mask_true_np, mask_pred_np,th=0.5,buffer=10)
                     precision += batch_precision
                     recall += batch_recall
                     ol_precision += olp * b_gt_a
@@ -209,13 +208,13 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val')
                 dice_score += multiclass_dice_coeff(mask_pred[:, 1:], mask_true[:, 1:], reduce_batch_first=False)
 
 
-        if epoch == 1 and mode == 'val':
+        if epoch == 1 and mode == 'val' and save_val:
             image = np.concatenate(image_batches)
             mask_true = np.concatenate(true_mask_batches)
             np.save(out_path + '/image_valid_test', image)
             np.save(out_path + '/mask_true_valid', mask_true)
 
-        if epoch % 2 == 0:
+        if epoch % 2 == 0  and save_val:
             mask_pred = np.concatenate(pred_batches)
             np.save(out_path + '/mask_pred_valid'+epoch_suf,mask_pred)
     net.train()
