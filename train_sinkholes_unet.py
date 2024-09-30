@@ -288,7 +288,7 @@ def train_model(
         logging.info('Epoch {} Validation Dice score: {}'.format(epoch,val_score))
         if save_checkpoint:
             state_dict = model.state_dict()
-            state_dict['mask_values'] = train_set.dataset.mask_values if args.partition_mode == 'random_by_patch' else train_set.mask_values
+            state_dict['mask_values'] = train_set.dataset.mask_values if args.partition_mode == 'random_by_patch' and not args.nonoverlap_tr_tst else train_set.mask_values
             torch.save(state_dict, str(dir_checkpoint / (args.job_name + 'checkpoint_epoch{}.pth'.format(epoch))))
             logging.info(f'Checkpoint {epoch} saved!')
 
