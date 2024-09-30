@@ -190,8 +190,9 @@ def train_model(
     #     train_set, val_set = get_preset_partition()
     # 3. Create data loaders
     loader_args = dict(batch_size=batch_size, num_workers=1, pin_memory=True)
+    val_loader_args = dict(batch_size=1, num_workers=1, pin_memory=True)
     train_loader = DataLoader(train_set, shuffle=True, **loader_args)
-    val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **loader_args)
+    val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **val_loader_args)
 
     # (Initialize logging)
     # experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
