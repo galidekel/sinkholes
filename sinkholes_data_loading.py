@@ -59,6 +59,10 @@ def has_consecutive_zeros(arr, min_consecutive=10,max_consecutive=1000):
 
     return np.any(row_check) or np.any(col_check)
 class SubsiDataset(Dataset):
+    test_dataset_for_nonoverlap_split = []
+    test_mask_for_nonoverlap_split = []
+
+
     def __init__(self,args, image_dir, mask_dir, intrfrgrm_list=None, scale: float = 1.0, mask_suffix: str = '',dset = 'train' ):
         super(SubsiDataset, self).__init__()
 
@@ -71,7 +75,7 @@ class SubsiDataset(Dataset):
             assert intrfrgrm_list is not None, "Partition mode 'preset by intf' requires an input intrfrgrm list"
         self.scale = scale
         self.mask_suffix = mask_suffix
-        if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train:
+        if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train and not args.nonoverlap_tr_tst:
           pref , mask_pref = 'data_patches_nonz_','mask_patches_nonz_'
         else:
           pref , mask_pref = 'data_patches_', 'mask_patches_'
@@ -93,11 +97,43 @@ class SubsiDataset(Dataset):
             raise RuntimeError(f'No input file found in {image_dir}, make sure you put your images there')
 
         self.image_data,self.mask_data,self.index_map = [],[],[]
+        test_data,test_mask_data = [],[]
         for i,id in enumerate(self.ids):
 
             if args.partition_mode != 'spatial':
+
                 image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + '.npy'))
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))
+                if args.nonoverlap_tr_tst :
+                    if dset == 'train':
+                        nz_patches,nz_masks,nz_indices = [],[],[]
+                        for ii in range(image_data.shape[0]):
+                            for jj in range(image_data.shape[1]):
+                                if np.any(mask_data[ii,jj] > 0):
+                                    nz_patches.append(image_data[ii,jj])
+                                    nz_masks.append(mask_data[ii,jj])
+                                    nz_indices.append([ii,jj])
+
+                        test_num = int(args.test/100 * len(nz_indices))
+                        test_patch_nums = random.sample(range(len(nz_indices)), test_num)
+                        test_patch_nums = sorted(test_patch_nums)
+                        test_patches = [nz_patches[p] for p in test_patch_nums]
+                        test_mask_patches = [nz_masks[p] for p in test_patch_nums]
+                        test_indices = [nz_indices[p] for p in test_patch_nums]
+
+                        train_patches,tr_mask_patches = [],[]
+                        for n,ind in enumerate(nz_indices):
+
+                            if not (any((abs(item[0] - ind[0]) < 2 and abs(item[1] - ind[1]) <2) for item in test_indices)):##only for stride 2!!
+                                train_patches.append(nz_patches[n])
+                                tr_mask_patches.append(nz_masks[n])
+
+                        image_data,mask_data = np.array(train_patches),np.array(tr_mask_patches)
+                        SubsiDataset.test_dataset_for_nonoverlap_split.append(np.array(test_patches))
+                        SubsiDataset.test_mask_for_nonoverlap_split.append(np.array(test_mask_patches))
+                    elif dset == 'test':
+                        image_data, mask_data =  SubsiDataset.test_mask_for_nonoverlap_split[i],SubsiDataset.test_mask_for_nonoverlap_split[i]
+
                 if not args.nonz_only or args.add_nulls_to_train:
                     image_data = image_data.reshape(-1,image_data.shape[2],image_data.shape[3])
                     mask_data = mask_data.reshape(-1,mask_data.shape[2],mask_data.shape[3])
@@ -149,9 +185,11 @@ class SubsiDataset(Dataset):
                     image_data = np.array(image_nz)
                     mask_data = np.array(mask_nz)
                     logging.info('Sptial partition: Created {} patches for {} set'.format(image_data.shape[0], dset))
+
             image_data = np.expand_dims(image_data,axis=0)
             mask_data = np.expand_dims(mask_data,axis=0)
             len_examples = image_data.shape[1]
+
             self.image_data.append(image_data)
             self.mask_data.append(mask_data)
             self.index_map.extend([[i,j] for j in range(len_examples)])
@@ -165,6 +203,8 @@ class SubsiDataset(Dataset):
 
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
         logging.info(f'Unique mask values: {self.mask_values}')
+
+
         logging.info(f'Created dataset: from {len(self.ids)} interferograms {len(self.index_map)} patches!!!')
 
     def __len__(self):
