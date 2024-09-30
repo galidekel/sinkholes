@@ -132,7 +132,7 @@ class SubsiDataset(Dataset):
                         SubsiDataset.test_dataset_for_nonoverlap_split.append(np.array(test_patches))
                         SubsiDataset.test_mask_for_nonoverlap_split.append(np.array(test_mask_patches))
                     elif dset == 'test':
-                        image_data, mask_data =  SubsiDataset.test_mask_for_nonoverlap_split[i],SubsiDataset.test_mask_for_nonoverlap_split[i]
+                        image_data, mask_data =  SubsiDataset.test_dataset_for_nonoverlap_split[i],SubsiDataset.test_mask_for_nonoverlap_split[i]
 
                 if not args.nonz_only or args.add_nulls_to_train:
                     image_data = image_data.reshape(-1,image_data.shape[2],image_data.shape[3])
