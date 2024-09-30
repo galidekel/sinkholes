@@ -86,13 +86,24 @@ def train_model(
 
     if args.partition_mode == 'random_by_patch':
         logging.info('Creating Dataset: Randlomly partitioning by patches')
-        dataset = SubsiDataset(args,image_dir,mask_dir,intf_list)
-        n_total = int(len(dataset))
-        n_val = int(n_total * val_percent)
-        n_test = int(n_total * test_percent)
-        n_train = n_total - n_val - n_test
-        train_set, temp_set = random_split(dataset, [n_train, n_total - n_train], generator=torch.Generator().manual_seed(0))
-        val_set, test_set = random_split(temp_set, [n_val, n_test], generator=torch.Generator().manual_seed(0))
+
+
+        if args.nonoverlap_tr_tst:
+            train_set = SubsiDataset(args,image_dir,mask_dir,intf_list,dset='train')
+            test_set = SubsiDataset(args,image_dir,mask_dir,intf_list,dset='test')
+            val_set = test_set
+            n_train = len(train_set)
+            n_val = len(val_set)
+            n_test = len(test_set)
+        else:
+            dataset = SubsiDataset(args,image_dir,mask_dir,intf_list)
+            n_total = int(len(dataset))
+            n_val = int(n_total * val_percent)
+            n_test = int(n_total * test_percent)
+            n_train = n_total - n_val - n_test
+            train_set, temp_set = random_split(dataset, [n_train, n_total - n_train], generator=torch.Generator().manual_seed(0))
+            val_set, test_set = random_split(temp_set, [n_val, n_test], generator=torch.Generator().manual_seed(0))
+
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)) )
         buffer = io.BytesIO()
         pickle.dump(test_set, buffer)
@@ -315,6 +326,7 @@ def get_args():
     parser.add_argument('--train_with_nonz_th', type = str, default='False', help='train only on non zero mask patches')
     parser.add_argument('--nonz_th',  nargs = '+', type = int, default=[350,150], help='north, south')
     parser.add_argument('--save_val', type = str, default='False', help='train only on non zero mask patches')
+    parser.add_argument('--nonoverlap_tr_tst', type = str, default='False', help='')
 
 
 
@@ -350,6 +362,8 @@ if __name__ == '__main__':
     args.train_with_nonz_th = str2bool(args.train_with_nonz_th)
     args.add_nulls_to_train = str2bool(args.add_nulls_to_train)
     args.save_val = str2bool(args.save_val)
+    args.save_val = str2bool(args.nonoverlap_tr_tst)
+
 
 
     dir_checkpoint = Path(outpath + 'checkpoints/')
