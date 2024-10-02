@@ -141,6 +141,9 @@ def train_model(
         logging.info('train intfs: ' + str(train_set.ids))
         logging.info('val intfs: ' + str(val_set.ids))
         logging.info('test intfs:' + str(test_set.ids))
+        logging.info('num of intfs in train: ' + str(len(train_set)))
+        logging.info('num of intfs in val: ' + str(len(val_set)))
+        logging.info('num of intfs in test: ' + str(len(test_set)))
         if (set(train_set.ids)).isdisjoint(set(val_set.ids)):
             logging.info( 'no commom train val intfs')
         if (set(train_set.ids)).isdisjoint(set(test_set.ids)):
