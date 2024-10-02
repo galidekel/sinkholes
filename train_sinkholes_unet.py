@@ -141,9 +141,9 @@ def train_model(
         logging.info('train intfs: ' + str(train_set.ids))
         logging.info('val intfs: ' + str(val_set.ids))
         logging.info('test intfs:' + str(test_set.ids))
-        logging.info('num of intfs in train: ' + str(len(train_set)))
-        logging.info('num of intfs in val: ' + str(len(val_set)))
-        logging.info('num of intfs in test: ' + str(len(test_set)))
+        logging.info('num of intfs in train: ' + str(len(train_set.ids)))
+        logging.info('num of intfs in val: ' + str(len(val_set.ids)))
+        logging.info('num of intfs in test: ' + str(len(test_set.ids)))
         if (set(train_set.ids)).isdisjoint(set(val_set.ids)):
             logging.info( 'no commom train val intfs')
         if (set(train_set.ids)).isdisjoint(set(test_set.ids)):
@@ -374,7 +374,7 @@ if __name__ == '__main__':
     args.train_with_nonz_th = str2bool(args.train_with_nonz_th)
     args.add_nulls_to_train = str2bool(args.add_nulls_to_train)
     args.save_val = str2bool(args.save_val)
-    args.save_val = str2bool(args.nonoverlap_tr_tst)
+    args.nonoverlap_tr_tst = str2bool(args.nonoverlap_tr_tst)
 
 
 
