@@ -138,9 +138,17 @@ def train_model(
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train')
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val')
         test_set = SubsiDataset(args,image_dir, mask_dir, intrfrgrm_list=test_list,dset = 'test')
+        logging.info('train intfs: ' + str(train_set.ids))
+        logging.info('val intfs: ' + str(val_set.ids))
+        logging.info('test intfs:' + str(test_set.ids))
+        if (train_set.ids).isdisjoint(set(val_set.ids)):
+            logging.info( 'no commom train val intfs')
+        if (train_set.ids).isdisjoint(set(test_set.ids)):
+            logging.info('no commom train test intfs')
+
 
         assert set(train_set.ids).isdisjoint(set(val_set.ids)) and set(train_set.ids).isdisjoint(set(test_set.ids)) and set(val_set.ids).isdisjoint(
-            set(test_set.ids)), 'there are NO common intfs in lists!'
+            set(test_set.ids)), 'there are common intfs in lists!'
 
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)))
         buffer = io.BytesIO()
@@ -240,7 +248,7 @@ def train_model(
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
                     masks_pred = model(images)
 
-                    if is_running_locally:
+                    if is_running_locally and False:
                         images_np =  images.detach().numpy()
                         masks_pred_np = masks_pred.detach().numpy()
                         true_masks_np = true_masks.detach().numpy()
