@@ -18,7 +18,7 @@ import geopandas as gpd
 from unet import *
 import logging
 
-#plt.rcParams['backend'] = 'Qt5Agg'
+plt.rcParams['backend'] = 'Qt5Agg'
 
 
 def object_level_evaluate( gt, pred,epsilon = 1e-7,th=0.7,buffer=5):
@@ -47,6 +47,7 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7,th=0.7,buffer=5):
         intersection_area= 0
         total_pred_area = sum(pp.area for pp in pred_polygons)
         total_gt_area = sum(pgt.area for pgt in gt_polygons)
+
         patch_gt_areas.append(total_gt_area)
         patch_pred_areas.append(total_pred_area)
         for pgt in gt_polygons:
@@ -58,28 +59,24 @@ def object_level_evaluate( gt, pred,epsilon = 1e-7,th=0.7,buffer=5):
                     x, y = pp.exterior.xy
                     x1, y1 = buffered_pp.exterior.xy
                     x2, y2 = pgt.exterior.xy
-                    fig, [ax1, ax2] = plt.subplots(1, 2, sharex=True, sharey=True)
-                    ax1.imshow(gt[i], cmap='gray')
-                    ax1.set_title('Ground Truth Mask')
-                    ax1.plot(x2, y2, color='green')
-                    ax2.imshow(pred[i], cmap='gray')
-                    ax2.set_title('Predicted Mask')
-                    ax2.plot(x, y, color='orange')
+                    ints = pgt.intersection(buffered_pp)
 
-                    plt.show()
+                    if not ints.is_empty:
+                        x_int, y_int = ints.exterior.xy
+
+                        fig, [ax1,ax2] = plt.subplots(1, 2, sharex=True, sharey=True)
+
+                        ax1.imshow(gt[i], cmap='gray')
+                        ax1.set_title('Ground Truth Mask')
+                        ax2.imshow(pred[i], cmap='gray')
+                        ax2.set_title('Predicted Mask')
+                        ax2.plot(x, y,color='red',linewidth=2)
+                        ax2.plot(x1, y1, color='blue',linewidth=2)
+                        ax2.plot(x2, y2,color='green',linewidth=2)
+                        ax2.fill(x_int, y_int, alpha=0.5, fc='yellow', label='Intersection')
 
 
-                    fig, [ax1,ax2] = plt.subplots(1, 2, sharex=True, sharey=True)
-
-                    ax1.imshow(gt[i], cmap='gray')
-                    ax1.set_title('Ground Truth Mask')
-                    ax2.imshow(pred[i], cmap='gray')
-                    ax2.set_title('Predicted Mask')
-                    ax2.plot(x, y,color='orange')
-                    ax2.plot(x1, y1, color='blue')
-                    ax2.plot(x2, y2,color='green')
-
-                    plt.show()
+                        plt.show()
             if intersection > th:
                 intersection_area += pgt.area
         ol_intersection_recall = round(intersection_area / (total_gt_area + epsilon),2)
@@ -170,21 +167,33 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val',
                     true_mask_batches.append(mask_true_np)
 
                 # plot for testing
-                if is_local and mode == 'test':
+                if is_local and False: #and mode == 'test':
                     import matplotlib.pyplot as plt
 
-                    fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-                    sc1 = ax1.imshow(image_np[0,:,:])
+                    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, sharex=True, sharey=True)
+                    sc1 = ax1.imshow(image_np[0,:,:], cmap='jet')
                     ax1.set_title('Input Patch')
-                    #cbar = fig.colorbar(sc1, ax=ax1,orientation='vertical',aspect = 20)
+                    ax1.set_yticks([0,100,200])
+                    ax1.set_xticks([0,50,100])
 
+
+                    # cbar = fig.colorbar(sc1, ax=ax1,orientation='vertical',aspect = 20, ticks=[0, 0.25, 0.5, 0.75, 1.0])
+                    #
+                    # cbar.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
                     ax2.imshow(mask_true_np[0, :, :])
-                    ax2.set_yticks([])
+                    ax2.set_yticks([0,100,200])
+                    ax2.set_xticks([0,50,100])
+
                     ax2.set_title('True Mask')
                     ax3.imshow(mask_pred_np[0, :, :])
-                    ax3.set_yticks([])
+                    ax3.set_yticks([0, 100, 200])
+                    ax3.set_xticks([0,50,100])
+
                     ax3.set_title('Predicted Mask')
 
+
+                    fig_name = 'byspatial_ccc'+str(bn)
+                    plt.savefig(f'/Users/galidek/Desktop/paper_figs/nonz_patches/{fig_name}')
                     plt.show()
               #### plt for testing
 
@@ -192,12 +201,13 @@ def evaluate(net, dataloader, device, amp ,is_local,out_path,epoch,mode = 'val',
                 dice_score += dice_coeff(mask_pred, mask_true, reduce_batch_first=False)
                 if mode == 'test':
                     batch_precision, batch_recall = calc_precision_recall(mask_pred_np, mask_true_np)
-                    olr, olp, b_gt_a = object_level_evaluate(mask_true_np, mask_pred_np,th=0.5,buffer=10)
+                    olr, olp, b_gt_a = object_level_evaluate(mask_true_np, mask_pred_np,th=0.7,buffer=5)
                     precision += batch_precision
                     recall += batch_recall
-                    ol_precision += olp * b_gt_a
-                    ol_recall +=olr * b_gt_a
-                    b_gts.append(b_gt_a)
+                    if not np.isnan(olp) and not np.isnan(olr):
+                        ol_precision += olp * b_gt_a
+                        ol_recall +=olr * b_gt_a
+                        b_gts.append(b_gt_a)
 
             else:
                 assert mask_true.min() >= 0 and mask_true.max() < net.n_classes, 'True mask indices should be in [0, n_classes['

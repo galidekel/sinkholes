@@ -18,7 +18,7 @@ def str2bool(arg):
 def get_args():
     parser = argparse.ArgumentParser(description='create intf partition')
     parser.add_argument('--in_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/')
-    parser.add_argument('--eleven_days_21',  type=str, default='True')
+    parser.add_argument('--eleven_days_20',  type=str, default='True')
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--val_percent',  type=int, help='validation set portion in percents', default=10)
 
@@ -39,7 +39,7 @@ if __name__ == '__main__':
     random.seed()
     args = get_args()
     args.eleven_days_21 = str2bool(args.eleven_days_21)
-    in_path = args.in_path + 'data_patches'+'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1])+'_11days/' if args.eleven_days_21 else '/'
+    in_path = args.in_path + 'data_patches'+'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1])+'_11days/' if args.eleven_days_20 else '/'
     if not os.path.exists(in_path):
         logging.info('the patches you requested do not exist - please check for errors or create the data')
         sys.exit()
