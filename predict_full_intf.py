@@ -242,7 +242,7 @@ if __name__ == '__main__':
 
 
         prefix = output_path  + intf
-        out_polyg_path = prefix + '_predicted_polyogns.shp'
+        out_polyg_path = output_path + 'polygs/' + intf +'_predicted_polyogns.shp'
         polygons.to_file(out_polyg_path)
 
 
