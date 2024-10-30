@@ -167,11 +167,17 @@ if __name__ == '__main__':
     job_name = args.job_name +'_'+ now
     model_name = args.model.split('.')[0]
     output_path = 'pred_outputs2/' + model_name + '/' + job_name + '/'
+    output_polyg_path = output_path + 'polygs/'
     try:
         os.makedirs(output_path)
         logging.info(f"Directory '{output_path}' created successfully")
     except FileExistsError:
         logging.info(f"Directory '{output_path}' already exists")
+    try:
+        os.makedirs(output_polyg_path)
+        logging.info(f"Directory '{output_polyg_path}' created successfully")
+    except FileExistsError:
+        logging.info(f"Directory '{output_polyg_path}' already exists")
 
     log_file = output_path + args.job_name + '_' + now + '.log'
     file_handler = logging.FileHandler(log_file)
@@ -238,7 +244,7 @@ if __name__ == '__main__':
 
 
         prefix = output_path  + intf
-        out_polyg_path = output_path + 'polygs/' + intf +'_predicted_polyogns.shp'
+        out_polyg_path = output_polyg_path +   intf +'_predicted_polyogns.shp'
         polygons.to_file(out_polyg_path)
 
 
