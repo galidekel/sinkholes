@@ -214,10 +214,6 @@ if __name__ == '__main__':
     data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '_all')
     mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.data_stride) + ('_11days' if args.eleven_days_diff else '_all')
 
-
-    data_dir = 'data_patches_H200_W100_strpp2_11days_22_23'
-    mask_dir = 'mask_patches_H200_W100_strpp2_11days_22_23'
-
     for intf in intf_list:
 
         intfs_coords= get_intf_coords(intf)
