@@ -30,12 +30,14 @@ for file in listdir(args.intf_dir):
                         dY = float(line.strip().split()[-1])
                     if 'Xdimension' in line:
                         dX = float(line.strip().split()[-1])
+                    if 'ByteOrder' in line:
+                        byte_order = line.strip().split()[-1]
         intfrgrm_name = file.split('.')[0][9:17] + file.split('.')[0][24:33]
         intf_lidar_mask = get_intf_lidar_mask(intfrgrm_name)
         print(intf_lidar_mask)
         if intf_lidar_mask == 'no_mask':
             logging.info('Note: No LiDAR mask for {}. Please decide what todo with it.'.format(intfrgrm_name))
-        intf_dict[intfrgrm_name] = {'north': y0,'east':x0, 'nlines': NLINES, 'ncells':NCELLS, 'dy' : dY, 'dx':dX, 'lidar_mask':intf_lidar_mask}
+        intf_dict[intfrgrm_name] = {'north': y0,'east':x0, 'nlines': NLINES, 'ncells':NCELLS, 'dy' : dY, 'dx':dX,'byte_order':byte_order, 'lidar_mask':intf_lidar_mask}
 
 
 with open(args.out_dir + 'intf_coord.json', 'w') as json_file:
