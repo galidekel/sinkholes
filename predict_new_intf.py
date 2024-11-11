@@ -45,16 +45,13 @@ if __name__ == '__main__':
     logging.info('Model loaded!')
 
     for i,p in enumerate(input_file_paths):
-        with open(p+ '.ers') as f:
-            for line in f:
-                if 'ByteOrder' in line:
-                    byte_order = line.strip().split()[-1]
+
         intf = intfs_list[i]
         intfs_coords = get_intf_coords(intf)
-        x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nz = intfs_coords
+        x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nz,bo = intfs_coords
 
         data = np.fromfile(p, dtype=np.float32, count=-1, sep='', offset=0).reshape(nlines, ncells)
-        if byte_order == 'MSBFirst':
+        if bo == 'MSBFirst':
             data = data.byteswap().newbyteorder('<')
         patchified_intf = patchify(data, args.patch_size, args.stride, mask_array=None, nonz_pathces=False)
 

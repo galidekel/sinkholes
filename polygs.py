@@ -57,7 +57,7 @@ if __name__ == '__main__':
 
             image = np.load( directory_path + intf +'_image.npy', allow_pickle=True)
             fig, ax1 = plt.subplots(1, 1)
-            x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nz = get_intf_coords(intf)
+            x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nz,bo = get_intf_coords(intf)
             extent = [x4000, x4000+dx*image.shape[1], y0 - dy * image.shape[0], y0]
 
             ax1.imshow(image, extent=extent)

@@ -242,7 +242,7 @@ if __name__ == '__main__':
 
 
 
-        x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nz = intfs_coords
+        x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nz,bo = intfs_coords
 
         # Convert mask array to polygons with latlon coordinates
         polygons = plg_indx2longlat(mask_array_to_polygons(reconstructed_pred),intfs_coords)

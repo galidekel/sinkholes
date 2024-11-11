@@ -11,11 +11,12 @@ def get_intf_coords(intf_name):
     ncells = intf_coords[intf_name]['ncells']
     lidar_mask = intf_coords[intf_name]['lidar_mask']
     num_nonz_p = intf_coords[intf_name]['nonz_num']
+    bo = intf_coords[intf_name]['byte_order']
 
     x4000 = x0 + 4000*dx
     x8500 = x4000 + 4500*dx
 
-    return (x0, y0, dx, dy,ncells, nlines, x4000, x8500,lidar_mask,num_nonz_p)
+    return (x0, y0, dx, dy,ncells, nlines, x4000, x8500,lidar_mask,num_nonz_p,bo)
 def get_intf_lidar_mask(intf_name):
     with open('lidar_intf_mask.txt', 'r') as f:
         mask = 'no_mask'

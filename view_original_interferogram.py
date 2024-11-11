@@ -15,7 +15,7 @@ for intf_file in intf_file_list:
 
     intf = intf_file[9:17] + '_' + intf_file[25:33]
     intf_info = get_intf_coords(intf)
-    x0 ,y0, dx, dy, nx, ny,lidar_mask = intf_info[0], intf_info[1], intf_info[2], intf_info[3], intf_info[4], intf_info[5], intf_info[8]
+    x0 ,y0, dx, dy, nx, ny,lidar_mask,bo = intf_info[0], intf_info[1], intf_info[2], intf_info[3], intf_info[4], intf_info[5], intf_info[8],intf_info[10]
     mask_polyg = lidar_mask_df[lidar_mask_df['source'] == lidar_mask]
     mask_polygs.append(mask_polyg)
     xn = x0 + dx*nx
@@ -26,12 +26,8 @@ for intf_file in intf_file_list:
     start_dates.append(start_date)
     end_dates.append(end_date)
     data = np.fromfile(intf_file, dtype=np.float32, count=-1, sep='', offset=0).reshape(ny, nx)
-    with open(mfile) as f:
-        for line in f:
-            if 'ByteOrder' in line:
-                byte_order = line.strip().split()[-1]
 
-    if byte_order == 'MSBFirst':
+    if bo == 'MSBFirst':
         data = data.byteswap().newbyteorder('<')
     subset_polygs = gdf[(gdf['start_date'] == start_date) & (gdf['end_date'] == end_date)]
     data_list.append(data)
