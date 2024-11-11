@@ -51,7 +51,7 @@ images,preds,gts, precisions,recalls,precisions2,recalls2,precisions3,recalls3 =
 for item in unique_intf_list:
 
         # if '0613' not in item and '1210' not in item:
-        if '0613' not in item:
+        if '20220713' not in item:
              continue
         print(item)
         intf_info = get_intf_coords(item)
@@ -59,8 +59,6 @@ for item in unique_intf_list:
         dx = intf_info[2]
         y0 = intf_info[1]
         dy = intf_info[3]
-
-
 
         image = np.load( path + item +'_image.npy', allow_pickle=True)
         mask_pred = np.load(path + item+'_pred.npy', allow_pickle=True)

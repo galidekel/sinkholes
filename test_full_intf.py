@@ -17,17 +17,22 @@ def str2bool(arg):
         arg = False
     return arg
 
-def reconstruct_intf(data,mask,intf_coords,net,add_lidar_mask = True,plot = False):
+def reconstruct_intf(data,intf_coords,net,stride,rth,mask = None,add_lidar_mask = True,plot = False):
     x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nonz_p = intf_coords
     data = (data + np.pi) / (2 * np.pi)
     assert data.ndim == 4 and mask.ndim == 4, "number of input dims should be 4 got data: {} mask: {} instead".format(
         data.ndim, mask.ndim)
     reconstructed_intf = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1 - 1 // args.data_stride),
                                    data.shape[1] * patch_W // args.data_stride + patch_W * (1 - 1 // args.data_stride)))
-    reconstructed_mask = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1 - 1 // args.data_stride),
-                                   data.shape[1] * patch_W // args.data_stride + patch_W * (1 - 1 // args.data_stride)))
+
     reconstructed_pred = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1 - 1 // args.data_stride),
                                    data.shape[1] * patch_W // args.data_stride + patch_W * (1 - 1 // args.data_stride)))
+
+    if mask is not None:
+        reconstructed_mask = np.zeros(
+            (data.shape[0] * patch_H // args.data_stride + patch_H * (1 - 1 // args.data_stride),
+             data.shape[1] * patch_W // args.data_stride + patch_W * (1 - 1 // args.data_stride)))
+
 
     if add_lidar_mask:
         lidar_mask_df = gpd.read_file('lidar_mask_polygs.shp')
@@ -58,8 +63,9 @@ def reconstruct_intf(data,mask,intf_coords,net,add_lidar_mask = True,plot = Fals
             reconstructed_intf[i * patch_H // args.data_stride: i * patch_H // args.data_stride + patch_H,
             j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += data[
                                                                                                i, j] / args.data_stride ** 2
-            reconstructed_mask[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
-            j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += mask[
+            if mask is not None:
+                reconstructed_mask[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
+                j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += mask[
                                                                                                i, j] / args.data_stride ** 2
 
             # yr0 = y0 - dy * i * patch_H/args.data_stride
@@ -119,7 +125,10 @@ def reconstruct_intf(data,mask,intf_coords,net,add_lidar_mask = True,plot = Fals
         # plt.show()
     reconstructed_pred = np.where(reconstructed_pred > args.recon_th, 1, 0).astype(np.float32)
 
-    return reconstructed_intf,reconstructed_mask,reconstructed_pred
+    if mask is None:
+        return reconstructed_intf,reconstructed_pred
+    else:
+        return reconstructed_intf,reconstructed_mask,reconstructed_pred
 
 def get_pred_args():
     import argparse
@@ -229,7 +238,7 @@ if __name__ == '__main__':
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
         mask = np.load(mask_path)
-        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf(data,mask,intfs_coords,net,args.data_stride,args.plot)
+        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf(data,intfs_coords,net,args.data_stride, args.recon_th)
 
 
 

@@ -37,7 +37,7 @@ def plg_indx2longlat(polyg_gdf, intf_coords):
 if __name__ == '__main__':
     plt.rcParams['backend'] = 'Qt5Agg'
 
-    directory_path = 'pred_outputs2/job_train_11ddiffs_rand_by_patch_2024-08-11_22h33checkpoint_epoch125/job_10_29_18h26/'
+    directory_path = 'pred_outputs2/'
     dir_polygs = directory_path #+ 'polygs/'
     outpath = dir_polygs + 'polygs_longlat/'
     os.makedirs(outpath, exist_ok=True)
@@ -52,17 +52,18 @@ if __name__ == '__main__':
 
 
             polygs_longlat_gdf = gpd.read_file(outpath+intf+'_predicted_polygons_longlat.shp')
+            list_of_polygons = polygs_longlat_gdf.geometry.tolist()
+
+
             image = np.load( directory_path + intf +'_image.npy', allow_pickle=True)
             fig, ax1 = plt.subplots(1, 1)
             x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nz = get_intf_coords(intf)
+            extent = [x4000, x4000+dx*image.shape[1], y0 - dy * image.shape[0], y0]
 
-            extent = [x4000, x8500, y0 - dy * nlines, y0]
-
-
-
-            #ax1.imshow(image,cmap='jet')
-            polyg_longlat.plot(ax=ax1, facecolor='none', edgecolor='black')
-
-        plt.show()
+            ax1.imshow(image, extent=extent)
+            for p in list_of_polygons:
+                x, y = p.exterior.xy
+                ax1.plot(x, y)
+            plt.show()
 
 
