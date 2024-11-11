@@ -41,4 +41,4 @@ for file in listdir(args.intf_dir):
 
 
 with open(args.out_dir + 'intf_coord.json', 'w') as json_file:
-    json.dump(intf_dict, json_file, indent=4)
+    json.dump(intf_dict, json_file, indent=4)###

@@ -294,7 +294,7 @@ if __name__ == '__main__':
             # ax1.callbacks.connect('xlim_changed', on_xlims_change)
             # ax1.callbacks.connect('ylim_changed', on_ylims_change)
 
-            # Show the plot
+            # Show the plot###
             plt.show()
 
 

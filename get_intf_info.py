@@ -32,3 +32,4 @@ if __name__ == '__main__':
     intf = '20190730_20190810'
     mask = get_intf_lidar_mask(intf)
     print(mask)
+###

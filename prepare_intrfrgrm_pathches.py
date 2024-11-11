@@ -231,4 +231,4 @@ if __name__ == '__main__':
                if np.any(full>0):
                   plt.show()
                else:
-                 plt.close()
+                 plt.close()###
