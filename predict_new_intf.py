@@ -105,8 +105,6 @@ def reconstruct_intf_prediction(data, intf_coords, net,patch_size, stride, rth, 
             plt.show()
     for i in range(data.shape[0]):
         print(i)
-        if i>30: ##### for test
-            break
 
         for j in range(data.shape[1]):
 
