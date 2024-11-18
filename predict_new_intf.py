@@ -16,6 +16,7 @@ import rasterio.features
 from shapely.geometry import shape
 import json
 import datetime
+from remove_no_Data_predictions import *
 
 def get_intf_coords(intf_name):
     intf_dict_file = open('intf_coord.json', 'r')
@@ -107,7 +108,6 @@ def reconstruct_intf_prediction(data, intf_coords, net,patch_size, stride, rth, 
         print(i)
 
         for j in range(data.shape[1]):
-
             is_within_mask = True
             if add_lidar_mask:
                 is_within_mask = np.all(rasterized_polygon[i * patch_H // stride:i * patch_H // stride + patch_H,
@@ -199,7 +199,11 @@ if __name__ == '__main__':
         patchified_intf = patchify(data, args.patch_size, stride, mask_array=None, nonz_pathces=False)
 
         reconstructed_pred = reconstruct_intf_prediction(patchified_intf,intfs_coords,net,args.patch_size,args.strdpp,args.rth)
-        polygons = plg_indx2longlat(mask_array_to_polygons(reconstructed_pred),intfs_coords)
+
+
+        polygons = mask_array_to_polygons(reconstructed_pred)
+        polygons = remove_no_data_predictions(polygons, intf = (data[:,4000:8500]+np.pi)/(2*np.pi))
+        polygons = plg_indx2longlat(polygons,intfs_coords)
 
         if not os.path.exists(Path(args.output_polygs_dir)):
             os.makedirs(args.output_polygs_dir)
