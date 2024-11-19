@@ -1,0 +1,11 @@
+GDAL==3.8.4
+PyQt5==5.15.11
+matplotlib==3.9.2
+gdal==3.8.4
+rasterio==1.4.2
+fiona==1.10.1
+tqdm==4.67.0
+scikit-image==0.24.0
+torch==2.5.1
+numba==0.60.0
+alive-progress==3.2.0
