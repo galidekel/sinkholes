@@ -345,18 +345,19 @@ def process_patches(data, mask, net, device="cpu", batch_size=16):
     flat_data = data.reshape(-1, data.shape[2], data.shape[3])
     flat_mask = mask.flatten()
     # Initialize predictions array
-    predictions = np.zeros_like(flat_data, dtype=np.float32)
-    valididx = np.where(flat_mask)[0]
-    validpred = np.zeros_like(flat_data)
+    predictions = np.zeros_like(flat_data, dtype=np.float32)  # output
+    valididx = np.where(flat_mask)[0]  # which patches to process
 
     # Batch processing
     baroff = logging.StreamHandler not in [h.__class__ for h in log.handlers]
     with alive_bar(len(valididx), spinner='classic', disable=baroff, dual_line=True) as bar:
         bar.text = f'Processing {len(valididx) // batch_size} batches of {batch_size} patches on {device}'
         for idx in range(0, len(valididx), batch_size):
+            batchindx = valididx[idx:idx + batch_size]
             # Collect patches for the current batch
-            batch_patches = flat_data[idx:idx + batch_size]
-            
+            batch_patches = flat_data[batchindx]
+            # fix zero values to 0.5
+            batch_patches = np.where(batch_patches, batch_patches, 0.5)
             # Convert batch to a PyTorch tensor and move to the appropriate device
             memf = torch.channels_last if device == "cuda" else torch.preserve_format
             batch_tensor = torch.tensor(batch_patches).unsqueeze(1).to(
@@ -369,11 +370,10 @@ def process_patches(data, mask, net, device="cpu", batch_size=16):
             # Remove batch and channel dimensions and move back to CPU for numpy conversion
             preds = preds.squeeze(1).cpu().detach().numpy()
             # Store predictions in the corresponding indices
-            validpred[idx:idx + batch_size] = preds
+            predictions[batchindx] = preds
             bar()
     
     # Map the valid predictions back to the patches
-    predictions[flat_mask] = validpred[flat_mask]
     predictions = predictions.reshape(data.shape[0], data.shape[1], data.shape[2], data.shape[3])
     return predictions
 
@@ -447,7 +447,7 @@ def reconstruct_from_patches(nrows, ncols, patches, stride, rth):
     return reconstructed.astype(np.float32)
 
 
-def reconstruct(output, interferogram, patches, stride, rth, use_numba=True):
+def reconstruct(output, interferogram, patches, stride, rth, use_numba=False):
     master, slave, nrows, ncols, x0, y0, dx, dy, *_ = from_raster(interferogram, False)
     filename = output + os.sep + 'tgeo_pred_' + master + '_' + slave + '.unw'
     if use_numba:
@@ -570,8 +570,11 @@ if __name__ == '__main__':
         log.info(f'Processing: {interferogram}')
         log.debug('Creating patches')    
         patches, nonz = patchify(interferogram, args.patch_size, stride, maskfile=args.mask)
+        # patches.tofile('patches.bin')
+        # nonz.tofile('nonz.bin')
         log.debug('Get Predictions')
         predictions = process_patches(patches, nonz, net, device, args.batch_size)
+        # predictions.tofile('predictions.bin')
         log.debug('Reconstructing predictions from patches. Using score > {args.rth}')
         predictionfile = reconstruct(args.output, interferogram, predictions, stride, args.rth)
         log.debug('Extracting prediction polygons')
