@@ -94,7 +94,7 @@ class SubsiDataset(Dataset):
             return
 
         if not self.ids :
-            raise RuntimeError(f'No input file found in {image_dir}, make sure you put your images there')
+            raise RuntimeError(f'empty set when trying to takr data from {image_dir}, recheck!!')
 
         self.image_data,self.mask_data,self.index_map = [],[],[]
         test_data,test_mask_data = [],[]
@@ -104,6 +104,12 @@ class SubsiDataset(Dataset):
 
                 image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + '.npy'))
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))
+
+                if args.retrain_with_fpz:
+                    fpz_data = np.load(join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy'))
+                    z_mask_data = np.zeros(fpz_data.shape)
+                    image_data = np.concatenate((image_data,fpz_data),axis=0)
+                    mask_data = np.concatenate((mask_data,z_mask_data),axis=0)
                 if args.nonoverlap_tr_tst :
                     if dset == 'train':
                         nz_patches,nz_masks,nz_indices = [],[],[]
@@ -161,6 +167,8 @@ class SubsiDataset(Dataset):
                         print('from {} patches'.format(image_data.shape[0]))
                         image_data= np.array(image_patches)
                         mask_data= np.array(mask_patches)
+
+
             else:
 
                 stride = math.floor(args.patch_size[0]/2) *coord_dict[id]["dy"]

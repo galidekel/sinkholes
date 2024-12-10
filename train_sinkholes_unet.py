@@ -123,16 +123,30 @@ def train_model(
     elif args.partition_mode == 'random_by_intf':
         logging.info('Creating Dataset: Randlomly partitioning by Interferograms !!!')
         unique_intf_list = intf_list
-        random.shuffle(unique_intf_list)
-        n_val = int(len(unique_intf_list)*(val_percent))
-        n_test = int(len(unique_intf_list)*(test_percent))
-        n_train = len(unique_intf_list) - n_val - n_test
-        if n_val == 0:
-            logging.info('not enough data for partitioning by interferograms !!')
-            sys.exit(0)
-        train_list = unique_intf_list[:n_train]
-        val_list = unique_intf_list[n_train:n_train+n_val]
-        test_list = unique_intf_list[n_train+n_val:]
+        if args.retrain_with_fpz: #excluding previous run testlist intfs
+            with open(args.test_data_to_exclude, 'rb') as file:
+                test_data = pickle.load(file)
+            test_list = test_data.ids
+
+            logging.info(f"excluding pre-determined test list: {test_list}")
+            tv_list = list(set(unique_intf_list) - set(test_list))
+            random.shuffle(tv_list)
+            n_val = int(len(tv_list)*(val_percent))
+            n_train = len(tv_list) - n_val
+            train_list = tv_list[:n_train]
+            val_list = tv_list[n_train:]
+
+        else:
+            random.shuffle(unique_intf_list)
+            n_val = int(len(unique_intf_list)*(val_percent))
+            n_test = int(len(unique_intf_list)*(test_percent))
+            n_train = len(unique_intf_list) - n_val - n_test
+            if n_val == 0:
+                logging.info('not enough data for partitioning by interferograms !!')
+                sys.exit(0)
+            train_list = unique_intf_list[:n_train]
+            val_list = unique_intf_list[n_train:n_train+n_val]
+            test_list = unique_intf_list[n_train+n_val:]
 
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train')
@@ -205,12 +219,6 @@ def train_model(
     train_loader = DataLoader(train_set, shuffle=True, **loader_args)
     val_loader = DataLoader(val_set, shuffle=False, drop_last=True, **val_loader_args)
 
-    # (Initialize logging)
-    # experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
-    # experiment.config.update(
-    #     dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
-    #          val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale, amp=amp)
-    # )
 
     logging.info(f'''Starting training:
         Epochs:          {epochs}
@@ -224,7 +232,6 @@ def train_model(
         Mixed Precision: {amp}
     ''')
 
-    # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
     optimizer = optim.RMSprop(model.parameters(),
                               lr=learning_rate, weight_decay=weight_decay, momentum=momentum, foreach=True)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5)  # goal: maximize Dice score
@@ -232,7 +239,7 @@ def train_model(
     criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss()
     global_step = 0
 
-    # 5. Begin training
+    #Begin training
     for epoch in range(1, epochs + 1):
         model.train()
         epoch_loss = 0
@@ -283,11 +290,7 @@ def train_model(
                 global_step += 1
                 epoch_loss += loss.item()
                 logging.info( '\n step: {}\n epoch: {}\n train loss: {:.8f} \n '.format(global_step,epoch,loss.item()))
-                # experiment.log({
-                #     'train loss': loss.item(),
-                #     'step': global_step,
-                #     'epoch': epoch
-                # })
+
                 pbar.set_postfix(**{'loss (batch)': loss.item()})
 
         Path(dir_validation).mkdir(parents=True, exist_ok=True)
@@ -339,6 +342,8 @@ def get_args():
     parser.add_argument('--nonz_th',  nargs = '+', type = int, default=[350,150], help='north, south')
     parser.add_argument('--save_val', type = str, default='False', help='train only on non zero mask patches')
     parser.add_argument('--nonoverlap_tr_tst', type = str, default='False', help='')
+    parser.add_argument('--retrain_with_fpz', type = str, default='False', help='')
+    parser.add_argument('--test_data_to_exclude',type = str, default='path to previous run test dataset ')
 
 
 
@@ -375,6 +380,7 @@ if __name__ == '__main__':
     args.add_nulls_to_train = str2bool(args.add_nulls_to_train)
     args.save_val = str2bool(args.save_val)
     args.nonoverlap_tr_tst = str2bool(args.nonoverlap_tr_tst)
+    args.retrain_with_fpz = str2bool(args.retrain_with_fpz)
 
 
 
