@@ -106,10 +106,15 @@ class SubsiDataset(Dataset):
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))
 
                 if args.retrain_with_fpz:
-                    fpz_data = np.load(join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy'))
-                    z_mask_data = np.zeros(fpz_data.shape)
-                    image_data = np.concatenate((image_data,fpz_data),axis=0)
-                    mask_data = np.concatenate((mask_data,z_mask_data),axis=0)
+                    fpz_path = join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy')
+                    if os.path.isfile(fpz_path):
+
+                        fpz_data = np.load(join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy'))
+                        z_mask_data = np.zeros(fpz_data.shape)
+                        image_data = np.concatenate((image_data,fpz_data),axis=0)
+                        mask_data = np.concatenate((mask_data,z_mask_data),axis=0)
+                    else:
+                        logging.info('Note! No fpz patches for intf {}'.format(id))
                 if args.nonoverlap_tr_tst :
                     if dset == 'train':
                         nz_patches,nz_masks,nz_indices = [],[],[]

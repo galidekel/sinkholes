@@ -80,66 +80,69 @@ if __name__ == '__main__':
     logging.info('removed {} intfs \nintf list is: {}'.format(len(test_list),intf_list))
 
     for intf in intf_list:
-        x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask, num_nonz_p, bo = get_intf_coords(intf)
+        data_patch_name = 'data_patches_fp_' + str(intf) +'.npy'
+        data_patch_path = os.path.join(output_image_patch_dir, data_patch_name)
+        if not os.path.isfile(data_patch_path):
+            x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask, num_nonz_p, bo = get_intf_coords(intf)
 
-        data_file_name = 'data_patches_' + intf + '_H' + str(H) + '_W' + str(W)+'_strpp{}'.format(args.stride) +'.npy'
-        mask_file_name = 'mask_patches_' + intf + '_H' + str(H) + '_W' + str(W)+'_strpp{}'.format(args.stride) +'.npy'
-        data_path = image_dir + data_file_name
-        mask_path = mask_dir + mask_file_name
-        data = np.load(data_path)
-        mask = np.load(mask_path)
-        assert data.shape == mask.shape, 'data shape and mask shape do not match!!!'
-        data = (data + np.pi) / (2 * np.pi)
-        add_lidar_mask = True
-        if add_lidar_mask:
-            lidar_mask_df = gpd.read_file('lidar_mask_polygs.shp')
-            mask_polyg = lidar_mask_df[lidar_mask_df['source'] == intf_lidar_mask]
-            height, width =(data.shape[0] * H // args.stride + H * (1 - 1 // args.stride),
-                                   data.shape[1] * W // args.stride + W * (1 - 1 // args.stride))
-            transform = rasterio.transform.from_origin(x4000, y0, dx, dy)  # Example transform
+            data_file_name = 'data_patches_' + intf + '_H' + str(H) + '_W' + str(W)+'_strpp{}'.format(args.stride) +'.npy'
+            mask_file_name = 'mask_patches_' + intf + '_H' + str(H) + '_W' + str(W)+'_strpp{}'.format(args.stride) +'.npy'
+            data_path = image_dir + data_file_name
+            mask_path = mask_dir + mask_file_name
+            data = np.load(data_path)
+            mask = np.load(mask_path)
+            assert data.shape == mask.shape, 'data shape and mask shape do not match!!!'
+            data = (data + np.pi) / (2 * np.pi)
+            add_lidar_mask = True
+            if add_lidar_mask:
+                lidar_mask_df = gpd.read_file('lidar_mask_polygs.shp')
+                mask_polyg = lidar_mask_df[lidar_mask_df['source'] == intf_lidar_mask]
+                height, width =(data.shape[0] * H // args.stride + H * (1 - 1 // args.stride),
+                                       data.shape[1] * W // args.stride + W * (1 - 1 // args.stride))
+                transform = rasterio.transform.from_origin(x4000, y0, dx, dy)  # Example transform
 
-            # Create an empty raster array
-            raster = np.zeros((height, width), dtype=np.uint8)
-            geometries = mask_polyg['geometry'].tolist()
-            # Rasterize the polygon
-            rasterized_polygon = rasterize(
-                [(g, 1) for g in geometries],  # List of (geometry, value) tuples
-                out_shape=raster.shape,
-                transform=transform,
-                fill=0,
-                all_touched=True,  # If True, all pixels touched by geometries will be burned in
-                dtype=raster.dtype
-            )
-        fpz_list = []
-        for i in range(data.shape[0]):
-            for j in range(data.shape[1]):
-                is_within_mask = True
+                # Create an empty raster array
+                raster = np.zeros((height, width), dtype=np.uint8)
+                geometries = mask_polyg['geometry'].tolist()
+                # Rasterize the polygon
+                rasterized_polygon = rasterize(
+                    [(g, 1) for g in geometries],  # List of (geometry, value) tuples
+                    out_shape=raster.shape,
+                    transform=transform,
+                    fill=0,
+                    all_touched=True,  # If True, all pixels touched by geometries will be burned in
+                    dtype=raster.dtype
+                )
+            fpz_list = []
+            for i in range(data.shape[0]):
+                for j in range(data.shape[1]):
+                    is_within_mask = True
 
-                if add_lidar_mask:
-                    is_within_mask = np.all(rasterized_polygon[
-                                            i * H // args.stride:i * H // args.stride + H,
-                                            j * W // args.stride: j * W // args.stride + W])
+                    if add_lidar_mask:
+                        is_within_mask = np.all(rasterized_polygon[
+                                                i * H // args.stride:i * H // args.stride + H,
+                                                j * W // args.stride: j * W // args.stride + W])
 
-                if is_within_mask and  np.all(mask[i,j]==0):
+                    if is_within_mask and  np.all(mask[i,j]==0):
 
 
-                    image = torch.tensor(data[i, j]).unsqueeze(0).unsqueeze(1).to(device=device,
-                                                                              dtype=torch.float32,
-                                                                              memory_format=torch.channels_last)
-                    pred = net(image)
-                    pred = (F.sigmoid(pred) > 0.5).float()
-                    pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
-                    if np.any(pred > 0):
-                        print(i, j)
+                        image = torch.tensor(data[i, j]).unsqueeze(0).unsqueeze(1).to(device=device,
+                                                                                  dtype=torch.float32,
+                                                                                  memory_format=torch.channels_last)
+                        pred = net(image)
+                        pred = (F.sigmoid(pred) > 0.5).float()
+                        pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
+                        if np.any(pred > 0):
+                            print(i, j)
 
-                        # fig,axes = plt.subplots(1,2)
-                        # axes[0].imshow(pred, cmap='gray')
-                        # axes[1].imshow(mask[i,j], cmap='gray')
-                        # plt.show()
-                        data_patch_name = 'data_patches_fp_'+str(intf)
-                        fpz_list.append(data[i,j])
-                        data_array = np.array(fpz_list)
-        np.save(output_image_patch_dir+ data_patch_name, data_array)
+                            # fig,axes = plt.subplots(1,2)
+                            # axes[0].imshow(pred, cmap='gray')
+                            # axes[1].imshow(mask[i,j], cmap='gray')
+                            # plt.show()
+
+                            fpz_list.append(data[i,j])
+                            data_array = np.array(fpz_list)
+            np.save(output_image_patch_dir+ data_patch_name, data_array)
 
 
 
