@@ -18,7 +18,6 @@ import geopandas as gpd
 import fiona
 from logging.handlers import TimedRotatingFileHandler
 from alive_progress import alive_bar
-from scalebar import scale_bar
 
 _LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d | %(name)s | %(levelname)s | %(message)s',
