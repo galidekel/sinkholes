@@ -322,7 +322,7 @@ def patchify(interferogram, patch_size, stride, maskfile= None):
     log.debug(f'Mapped {patches.shape[0]}x{patches.shape[1]} patches of {patches.shape[2]}x{patches.shape[3]} pixels')
     nonz = patches.any(axis=(2,3))
     log.debug(f'Found {nonz.sum()} valid patches out of {np.prod(nonz.shape)}')
-    return patches, nonz
+    return patches, nonz, data_mask
 
 
 def process_patches(data, mask, net, device="cpu", batch_size=16):
@@ -461,11 +461,11 @@ def reconstruct(output, interferogram, patches, stride, rth, use_numba=False):
     return filename
 
 
-def get_polygons(predictedfile):
+def get_polygons(predictedfile, mask):
     # Open the raster file
     with rasterio.open(predictedfile + '.ers') as src:
         raster = src.read(1)
-        mask = raster == 1  # Create a mask for values equal to 1
+        mask *= raster == 1  # Create a mask for values equal to 1
         transform = src.transform
         crs = src.crs
         if crs is None:
@@ -569,7 +569,7 @@ if __name__ == '__main__':
     for i, interferogram in enumerate(args.interferograms):
         log.info(f'Processing: {interferogram}')
         log.debug('Creating patches')    
-        patches, nonz = patchify(interferogram, args.patch_size, stride, maskfile=args.mask)
+        patches, nonz, mask = patchify(interferogram, args.patch_size, stride, maskfile=args.mask)
         # patches.tofile('patches.bin')
         # nonz.tofile('nonz.bin')
         log.debug('Get Predictions')
@@ -578,4 +578,4 @@ if __name__ == '__main__':
         log.debug('Reconstructing predictions from patches. Using score > {args.rth}')
         predictionfile = reconstruct(args.output, interferogram, predictions, stride, args.rth)
         log.debug('Extracting prediction polygons')
-        polygonsfile = get_polygons(predictionfile)
+        polygonsfile = get_polygons(predictionfile, mask)
