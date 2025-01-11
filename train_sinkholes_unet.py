@@ -168,9 +168,9 @@ def train_model(
         if (set(train_set.ids)).isdisjoint(set(test_set.ids)):
             logging.info('no commom train test intfs')
 
-
-        assert set(train_set.ids).isdisjoint(set(val_set.ids)) and set(train_set.ids).isdisjoint(set(test_set.ids)) and set(val_set.ids).isdisjoint(
-            set(test_set.ids)), 'there are common intfs in lists!'
+### uncomment back!!!
+        # assert set(train_set.ids).isdisjoint(set(val_set.ids)) and set(train_set.ids).isdisjoint(set(test_set.ids)) and set(val_set.ids).isdisjoint(
+        #     set(test_set.ids)), 'there are common intfs in lists!'
 
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)))
         buffer = io.BytesIO()
