@@ -147,8 +147,13 @@ def train_model(
             train_list = unique_intf_list[:n_train]
             val_list = unique_intf_list[n_train:n_train+n_val]
             test_list = unique_intf_list[n_train+n_val:]
-
-
+            ###hack!!!!!!!!
+            test_list = ['20190504_20190515','20191210_20191221','20200613_20200624','20201115_20201126','20210326_20210406','20210510_20210521','20190503_20190514','20191209_20191220','20200614_20200625','20201114_20201125','20210327_20210407','20210509_20210520']
+            val_list = test_list
+            train_list = unique_intf_list
+            for item in test_list:
+                train_list.remove(item)
+            ################
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train')
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val')
         test_set = SubsiDataset(args,image_dir, mask_dir, intrfrgrm_list=test_list,dset = 'test')
