@@ -17,21 +17,23 @@ def str2bool(arg):
         arg = False
     return arg
 
-def reconstruct_intf(data,intf_coords,net,stride,rth,mask = None,add_lidar_mask = True,plot = False):
-    x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nonz_p = intf_coords
+def reconstruct_intf_prediction(data, intf_coords, net,patch_size, stride, rth, mask = None, add_lidar_mask = True, plot = False):
+    x0, y0, dx, dy, ncells, nlines, x4000, x8500, intf_lidar_mask,num_nonz_p,bo = intf_coords
+    patch_H,patch_W = patch_size
     data = (data + np.pi) / (2 * np.pi)
-    assert data.ndim == 4 and mask.ndim == 4, "number of input dims should be 4 got data: {} mask: {} instead".format(
+    if mask is not None:
+        assert data.ndim == 4 and mask.ndim == 4, "number of input dims should be 4 got data: {} mask: {} instead".format(
         data.ndim, mask.ndim)
-    reconstructed_intf = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1 - 1 // args.data_stride),
-                                   data.shape[1] * patch_W // args.data_stride + patch_W * (1 - 1 // args.data_stride)))
+    reconstructed_intf = np.zeros((data.shape[0] * patch_H // stride + patch_H * (1 - 1 // stride),
+                                   data.shape[1] * patch_W // stride + patch_W * (1 - 1 // stride)))
 
-    reconstructed_pred = np.zeros((data.shape[0] * patch_H // args.data_stride + patch_H * (1 - 1 // args.data_stride),
-                                   data.shape[1] * patch_W // args.data_stride + patch_W * (1 - 1 // args.data_stride)))
+    reconstructed_pred = np.zeros((data.shape[0] * patch_H // stride + patch_H * (1 - 1 // stride),
+                                   data.shape[1] * patch_W // stride + patch_W * (1 - 1 // stride)))
 
     if mask is not None:
         reconstructed_mask = np.zeros(
-            (data.shape[0] * patch_H // args.data_stride + patch_H * (1 - 1 // args.data_stride),
-             data.shape[1] * patch_W // args.data_stride + patch_W * (1 - 1 // args.data_stride)))
+            (data.shape[0] * patch_H // stride + patch_H * (1 - 1 // stride),
+             data.shape[1] * patch_W // stride + patch_W * (1 - 1 // stride)))
 
 
     if add_lidar_mask:
@@ -60,13 +62,13 @@ def reconstruct_intf(data,intf_coords,net,stride,rth,mask = None,add_lidar_mask 
         print(i)
 
         for j in range(data.shape[1]):
-            reconstructed_intf[i * patch_H // args.data_stride: i * patch_H // args.data_stride + patch_H,
-            j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += data[
-                                                                                               i, j] / args.data_stride ** 2
+            reconstructed_intf[i * patch_H // stride: i * patch_H // stride + patch_H,
+            j * patch_W // stride: j * patch_W // stride + patch_W] += data[
+                                                                                               i, j] / stride ** 2
             if mask is not None:
-                reconstructed_mask[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
-                j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += mask[
-                                                                                               i, j] / args.data_stride ** 2
+                reconstructed_mask[i * patch_H // stride:i * patch_H // stride + patch_H,
+                j * patch_W // stride: j * patch_W // stride + patch_W] += mask[
+                                                                                               i, j] /stride ** 2
 
             # yr0 = y0 - dy * i * patch_H/args.data_stride
             # yrn = yr0 - dy * patch_H
@@ -103,8 +105,8 @@ def reconstruct_intf(data,intf_coords,net,stride,rth,mask = None,add_lidar_mask 
             is_within_mask = True
             if add_lidar_mask:
                 is_within_mask = np.all(rasterized_polygon[
-                                        i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
-                                        j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W])
+                                        i * patch_H // stride:i * patch_H // stride + patch_H,
+                                        j * patch_W // stride: j * patch_W // stride + patch_W])
 
             if is_within_mask:
                 # if  np.any(data[i,j]>5):
@@ -115,15 +117,15 @@ def reconstruct_intf(data,intf_coords,net,stride,rth,mask = None,add_lidar_mask 
                 pred = (F.sigmoid(pred) > 0.5).float()
                 pred = pred.squeeze(1).squeeze(0).cpu().detach().numpy()
 
-                reconstructed_pred[i * patch_H // args.data_stride:i * patch_H // args.data_stride + patch_H,
-                j * patch_W // args.data_stride: j * patch_W // args.data_stride + patch_W] += pred / args.data_stride ** 2
+                reconstructed_pred[i * patch_H // stride:i * patch_H // stride + patch_H,
+                j * patch_W // stride: j * patch_W // stride + patch_W] += pred / stride ** 2
 
         # fig, (ax1,ax2, ax3) = plt.subplots(1, 3)
         # ax1.imshow(data[i,j])
         # ax2.imshow(mask[i,j])
         # ax3.imshow(pred)
         # plt.show()
-    reconstructed_pred = np.where(reconstructed_pred > args.recon_th, 1, 0).astype(np.float32)
+    reconstructed_pred = np.where(reconstructed_pred > rth, 1, 0).astype(np.float32)
 
     if mask is None:
         return reconstructed_intf,reconstructed_pred
@@ -238,7 +240,7 @@ if __name__ == '__main__':
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
         mask = np.load(mask_path)
-        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf(data,intfs_coords,net,args.data_stride, args.recon_th)
+        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.data_stride, args.recon_th)
 
 
 
