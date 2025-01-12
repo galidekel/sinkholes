@@ -240,7 +240,7 @@ if __name__ == '__main__':
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
         mask = np.load(mask_path)
-        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.data_stride, args.recon_th)
+        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.data_stride, args.recon_th,mask)
 
 
 
