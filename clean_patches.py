@@ -60,12 +60,15 @@ if __name__ == '__main__':
     mask_patch_path = args.patches_path + 'mask_patches'+ '_H' + str(H) + '_W' + str(W) +'_strpp' + str(args.strides_per_patch) + '_11days' '/'
     patch_data_path = args.patches_path + 'data_patches'+ '_H' + str(H) + '_W' + str(W) +'_strpp' + str(args.strides_per_patch) + '_11days' '/'
     cleaned_dir = mask_patch_path+'cleaned/'
+    cleaned_data_dir = patch_data_path+'cleaned/'
     if os.path.exists(cleaned_dir):
         shutil.rmtree(cleaned_dir)  # Deletes
         # the existing directory and all its contents
-
+    if os.path.exists(cleaned_data_dir):
+        shutil.rmtree(cleaned_data_dir)
     # Create a new, empty directory
     os.makedirs(cleaned_dir, exist_ok=True)
+    os.makedirs(cleaned_data_dir, exist_ok=True)
 
     files = [item for item in listdir(mask_patch_path) if path.isfile(path.join(mask_patch_path, item))and 'nonz' not in item]
     data_files = ['data'+item[4:] for item in files]
