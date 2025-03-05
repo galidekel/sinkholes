@@ -20,6 +20,7 @@ import numpy as np
 import numpy as np
 from shapely.geometry import Polygon
 from rasterio.features import rasterize
+import logging
 
 
 def count_zero_pixels_inside_polygon(image, shapely_polygon):
@@ -155,7 +156,7 @@ if __name__ == '__main__':
                 plt.show()
         cleaned_data = np.array(cleaned_data)
         cleaned_mask  = np.array(cleaned_mask)
-        print('finished cleaning inft'+str(n))
+        logging.info('finished cleaning inft'+str(n))
         if len(orig_shape) ==4:
             cleaned_mask = np.reshape(cleaned_mask,(orig_shape[0],orig_shape[1],orig_shape[2],orig_shape[3]))
         np.save(mask_patch_path+'cleaned/'+file.split('.')[0] +'_cleaned.npy', cleaned_mask)
@@ -168,9 +169,9 @@ if __name__ == '__main__':
         orig_nonz_mask = np.load(mask_patch_path+'mask_patches_nonz'+file[12:])
         orig_nonz_data = np.load(patch_data_path+'data_patches_nonz'+file[12:])
 
-        print('shape of saved cleaned data is' + str(np.shape(reloaded)))
-        print('shape of orig nonz data is' + str(np.shape(orig_nonz_data)))
-        print('shape of orig nonz mask is' + str(np.shape(orig_nonz_mask)))
-        print('shape of saved reloaded nonz data is' + str(np.shape(reloaded_nonz_data)))
-        print('shape of saved reloaded nonz_mask is' + str(np.shape(reloaded_nonz_mask)))
+        logging.info('shape of saved cleaned data is' + str(np.shape(reloaded)))
+        logging.info('shape of orig nonz data is' + str(np.shape(orig_nonz_data)))
+        logging.info('shape of orig nonz mask is' + str(np.shape(orig_nonz_mask)))
+        logging.info('shape of saved reloaded nonz data is' + str(np.shape(reloaded_nonz_data)))
+        logging.info('shape of saved reloaded nonz_mask is' + str(np.shape(reloaded_nonz_mask)))
         assert reloaded.shape == orig_shape, 'Not as original!'
