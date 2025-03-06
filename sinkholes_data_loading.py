@@ -79,7 +79,10 @@ class SubsiDataset(Dataset):
           pref , mask_pref = 'data_patches_nonz_','mask_patches_nonz_'
         else:
           pref , mask_pref = 'data_patches_', 'mask_patches_'
-
+        if args.use_cleaned_patches:
+            suff,mask_suff = '_cleaned','_cleaned'
+        else:
+            suff,mask_suff = '',''
         start_intf_name = len(pref)
         if args.partition_mode == 'spatial':
             with open(args.intf_dict_path, 'r') as json_file:
@@ -102,8 +105,8 @@ class SubsiDataset(Dataset):
 
             if args.partition_mode != 'spatial':
 
-                image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + '.npy'))
-                mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +'.npy'))
+                image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + suff+'.npy'))
+                mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +mask_suff+'.npy'))
 
                 if args.retrain_with_fpz:
                     fpz_path = join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy')
@@ -210,7 +213,7 @@ class SubsiDataset(Dataset):
 
         with Pool() as p:
             unique = list(tqdm(
-                p.imap(partial(unique_mask_values, mask_dir=self.mask_dir, mask_suffix='_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride)+'.npy'), self.ids),
+                p.imap(partial(unique_mask_values, mask_dir=self.mask_dir, mask_suffix='_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride)+mask_suff+'.npy'), self.ids),
                 total=len(self.ids)
             ))
 

@@ -56,10 +56,13 @@ def train_model(
     image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
     mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
     #
+    if args.use_cleaned_patches:
+        image_dir += '/cleaned'
+        mask_dir += '/cleaned'
 
         #sys.exit(0)
     logging.info('input patch directories: {} and {}'.format(image_dir, mask_dir))
-    assert os.path.exists(image_dir) and os.path.exists(mask_dir), 'The data you are requesting does not exist, please check if you prepared it at the preparation stage'
+    assert os.path.exists(image_dir) and os.path.exists(image_dir), 'The data you are requesting does not exist, please check if you prepared it at the preparation stage'
     if args.nonz_only and args.partition_mode != 'spatial':
         pref, mask_pref = 'data_patches_nonz_', 'mask_patches_nonz_'
     else:
@@ -123,10 +126,18 @@ def train_model(
     elif args.partition_mode == 'random_by_intf':
         logging.info('Creating Dataset: Randlomly partitioning by Interferograms !!!')
         unique_intf_list = intf_list
-        if args.retrain_with_fpz: #excluding previous run testlist intfs
+        if args.test_data_to_exclude is not None:
             with open(args.test_data_to_exclude, 'rb') as file:
                 test_data = pickle.load(file)
             test_list = test_data.ids
+        else:
+            test_list = None
+
+        if args.retrain_with_fpz: #excluding previous run testlist intfs
+            if test_list is None:
+                logging.info('retrain mode has to have preset test list  !!')
+                sys.exit(0)
+
 
             logging.info(f"excluding pre-determined test list: {test_list}")
             tv_list = list(set(unique_intf_list) - set(test_list))
@@ -137,23 +148,30 @@ def train_model(
             val_list = tv_list[n_train:]
 
         else:
-            random.shuffle(unique_intf_list)
-            n_val = int(len(unique_intf_list)*(val_percent))
-            n_test = int(len(unique_intf_list)*(test_percent))
-            n_train = len(unique_intf_list) - n_val - n_test
-            if n_val == 0:
-                logging.info('not enough data for partitioning by interferograms !!')
-                sys.exit(0)
-            train_list = unique_intf_list[:n_train]
-            val_list = unique_intf_list[n_train:n_train+n_val]
-            test_list = unique_intf_list[n_train+n_val:]
-            ###hack!!!!!!!!
-            test_list = ['20190504_20190515','20191210_20191221','20200613_20200624','20201115_20201126','20210326_20210406','20210510_20210521','20190503_20190514','20191209_20191220','20200614_20200625','20201114_20201125','20210327_20210407','20210509_20210520']
-            val_list = test_list
-            train_list = unique_intf_list
-            for item in test_list:
-                train_list.remove(item)
-            ################
+            if test_list is None:
+                random.shuffle(unique_intf_list)
+                n_val = int(len(unique_intf_list)*(val_percent))
+                n_test = int(len(unique_intf_list)*(test_percent))
+                n_train = len(unique_intf_list) - n_val - n_test
+                if n_val == 0:
+                    logging.info('not enough data for partitioning by interferograms !!')
+                    sys.exit(0)
+                train_list = unique_intf_list[:n_train]
+                val_list = unique_intf_list[n_train:n_train+n_val]
+                test_list = unique_intf_list[n_train+n_val:]
+
+            else:
+                tv_list = list(set(unique_intf_list) - set(test_list))
+                random.shuffle(tv_list)
+                n_val = int(len(tv_list) * (val_percent))
+                n_train = len(tv_list) - n_val
+                if n_val == 0:
+                    logging.info('not enough data for partitioning by interferograms !!')
+                    sys.exit(0)
+                train_list = tv_list[:n_train]
+                val_list = tv_list[n_train:]
+
+
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train')
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val')
         test_set = SubsiDataset(args,image_dir, mask_dir, intrfrgrm_list=test_list,dset = 'test')
@@ -348,11 +366,8 @@ def get_args():
     parser.add_argument('--save_val', type = str, default='False', help='train only on non zero mask patches')
     parser.add_argument('--nonoverlap_tr_tst', type = str, default='False', help='')
     parser.add_argument('--retrain_with_fpz', type = str, default='False', help='')
-    parser.add_argument('--test_data_to_exclude',type = str, default='path to previous run test dataset ')
-
-
-
-
+    parser.add_argument('--test_data_to_exclude',type = str, default = None, help='path to previous run test dataset ')
+    parser.add_argument('--use_cleaned_patches', action='store_true')
 
     return parser.parse_args()
 
