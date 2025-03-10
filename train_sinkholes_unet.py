@@ -25,6 +25,7 @@ from dice_score import dice_loss
 
 from datetime import datetime
 import pickle
+from attn_unet import *
 
 def str2bool(arg):
     if arg.lower() == 'true':
@@ -368,6 +369,8 @@ def get_args():
     parser.add_argument('--retrain_with_fpz', type = str, default='False', help='')
     parser.add_argument('--test_data_to_exclude',type = str, default = None, help='path to previous run test dataset ')
     parser.add_argument('--use_cleaned_patches', action='store_true')
+    parser.add_argument('--attn_unet', action='store_true')
+
 
     return parser.parse_args()
 
@@ -418,7 +421,10 @@ if __name__ == '__main__':
     # Change here to adapt to your data
     # n_channels=1 for intrfrgrm images
     # n_classes is the number of probabilities you want to get per pixel
-    model = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
+    if args.attn_unet:
+        model = AttentionUNet(n_channels=1, n_classes=args.classes,bilinear=args.bilinear)
+    else:
+        model = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
     model = model.to(memory_format=torch.channels_last)
 
     logging.info(f'Network:\n'
