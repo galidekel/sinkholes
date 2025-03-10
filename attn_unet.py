@@ -67,7 +67,7 @@ class AttentionGate(nn.Module):
 
 
 class Up(nn.Module):
-    """Upscaling then double conv with Optimized Attention Gate"""
+    """Upscaling then double conv with Optimized Attention Gate!!"""
 
     def __init__(self, in_channels, out_channels, bilinear=True):
         super().__init__()
