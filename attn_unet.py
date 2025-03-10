@@ -4,9 +4,9 @@ import torch.nn.functional as F
 
 
 class DoubleConv(nn.Module):
-    """(convolution => [BN] => ReLU) * 2"""
+    """(convolution => [BN] => ReLU) * 2 with optional Dropout for regularization"""
 
-    def __init__(self, in_channels, out_channels, mid_channels=None):
+    def __init__(self, in_channels, out_channels, mid_channels=None, dropout=0.1):
         super().__init__()
         if not mid_channels:
             mid_channels = out_channels
@@ -14,6 +14,7 @@ class DoubleConv(nn.Module):
             nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
+            nn.Dropout2d(dropout),  # Dropout added for regularization
             nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
@@ -38,31 +39,35 @@ class Down(nn.Module):
 
 
 class AttentionGate(nn.Module):
-    """Attention Gate for feature selection in skip connections"""
+    """Optimized Attention Gate with fewer parameters"""
 
     def __init__(self, in_channels, gating_channels):
         super(AttentionGate, self).__init__()
-        self.W_x = nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1, padding=0, bias=True)
-        self.W_g = nn.Conv2d(gating_channels, in_channels, kernel_size=1, stride=1, padding=0, bias=True)
-        self.psi = nn.Conv2d(in_channels, 1, kernel_size=1, stride=1, padding=0, bias=True)
+
+        reduced_channels = in_channels // 2  # Reduce channel size for efficiency
+
+        self.W_x = nn.Conv2d(in_channels, reduced_channels, kernel_size=1, bias=False)
+        self.W_g = nn.Conv2d(gating_channels, reduced_channels, kernel_size=1, bias=False)
+        self.psi = nn.Conv2d(reduced_channels, 1, kernel_size=1, bias=False, groups=1)  # Depthwise convolution for fewer params
         self.relu = nn.ReLU(inplace=True)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, g):
-        x1 = self.W_x(x)  # Skip connection transformation
-        g1 = self.W_g(g)  # Gating signal transformation
+        x1 = self.W_x(x)  # Process skip connection
+        g1 = self.W_g(g)  # Process gating signal
 
-        # Ensure g1 matches x1 in spatial dimensions
+        # Ensure sizes match
         if g1.shape[-2:] != x1.shape[-2:]:
             g1 = F.interpolate(g1, size=x1.shape[-2:], mode="bilinear", align_corners=True)
 
         psi = self.relu(x1 + g1)
         psi = self.sigmoid(self.psi(psi))
 
-        return x * psi
+        return x * psi  # Apply attention mask
+
 
 class Up(nn.Module):
-    """Upscaling then double conv with Attention Gate"""
+    """Upscaling then double conv with Optimized Attention Gate"""
 
     def __init__(self, in_channels, out_channels, bilinear=True):
         super().__init__()
@@ -74,7 +79,7 @@ class Up(nn.Module):
             self.up = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
             self.conv = DoubleConv(in_channels, out_channels)
 
-        self.attention = AttentionGate(out_channels, out_channels)  # Apply attention
+        self.attention = AttentionGate(out_channels, out_channels)  # Optimized attention
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
