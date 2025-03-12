@@ -241,6 +241,8 @@ if __name__ == '__main__':
         intfs_coords= get_intf_coords(intf)
         data_file_name = 'data_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
         mask_file_name = 'mask_patches_' + intf + '_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) +'.npy'
+        print (mask_file_name)
+        print(mask_file_name.shape)
         data_path = data_dir + '/' + data_file_name
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
