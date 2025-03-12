@@ -158,6 +158,9 @@ def get_pred_args():
 
     parser.add_argument('--plot', type=str,default='False')
     parser.add_argument('--attn_unet',action='store_true')
+    parser.add_argument('--test_stride', type=int, default=2)
+
+
 
 
     return parser.parse_args()
@@ -244,7 +247,7 @@ if __name__ == '__main__':
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
         mask = np.load(mask_path)
-        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.data_stride, args.recon_th,mask)
+        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.test_stride, args.recon_th,mask)
 
 
 
