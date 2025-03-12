@@ -140,7 +140,7 @@ def get_pred_args():
     parser.add_argument('--input_patch_dir',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='patches inputs')
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
-    parser.add_argument('--eleven_days_diff',  type=str, default='False', help='Flag to take only 11 days difference interferograms')
+    parser.add_argument('--eleven_days_diff',  action='store_true', help='Flag to take only 11 days difference interferograms')
 
     parser.add_argument('--intf_source', type=str, default = 'intf_list', choices=['intf_list', 'test_dataset','preset','all'])
     parser.add_argument('--intf_list', type=str, default = None, help='a list of intf ids divided by comma')
