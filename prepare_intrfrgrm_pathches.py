@@ -31,6 +31,7 @@ def patchify(input_array, window_size, stride, mask_array= None,nonz_pathces = T
          data_row.append(data_patch)
          if mask_array is not None:
             mask_patch = mask_array[i:i + window_size[0], j:j + window_size[1]]
+            mask_row.append(mask_patch)
             if mask_patch.any() !=0 and nonz_pathces:
                 data_patches_nonz.append(data_patch)
                 mask_patches_nonz.append(mask_patch)
