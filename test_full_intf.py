@@ -9,6 +9,7 @@ from rasterio.features import rasterize
 import logging
 from datetime import datetime
 from get_intf_info import *
+from attn_unet import *
 
 def str2bool(arg):
     if arg.lower() == 'true':
@@ -156,6 +157,7 @@ def get_pred_args():
     parser.add_argument('--add_lidar_mask', type=str,default='True')
 
     parser.add_argument('--plot', type=str,default='False')
+    parser.add_argument('--attn_unet',action='store_true')
 
 
     return parser.parse_args()
@@ -217,6 +219,8 @@ if __name__ == '__main__':
         logging.info('taking test intfs from test dataset {}. intf list: {}'.format(args.test_dataset, intf_list))
 
     net = UNet(n_channels=1, n_classes=1, bilinear=False)
+    if args.attn_unet:
+        net = AttentionUNet(n_channels=1,n_classes=1, bilinear=False)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Loading model {args.model}')
     logging.info(f'Using device {device}')
