@@ -37,7 +37,7 @@ def patchify(input_array, window_size, stride, mask_array= None,nonz_pathces = T
 
       data_patches.append(data_row)
       mask_patches.append(mask_row)
-    if mask is None:
+    if mask_array is None:
        return np.array(data_patches)
     else:
         return np.array(data_patches),np.array(mask_patches), np.array(data_patches_nonz), np.array(mask_patches_nonz)
@@ -78,7 +78,7 @@ if __name__ == '__main__':
             logging.info('Note! These patches arleadt exist! If you want to recreate them - remove the existing dir first')
             #sys.exit()
     if args.by_list is None:
-        input_files_paths = list(Path(args.input_dir).glob('*.unw'))
+        input_file_paths = list(Path(args.input_dir).glob('*.unw'))
     else:
         input_files = []
         input_file_paths = []
@@ -189,7 +189,7 @@ if __name__ == '__main__':
         #     mask_array = src.read(1)
 
 
-        data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = patchify_for_train_and_test(data, patch_size, stride= (patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch), mask_array=mask)
+        data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = patchify(data, patch_size, stride= (patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch), mask_array=mask)
         counter_nonz = data_patches_nonz.shape[0]
         logging.info('intrfrgrm {}: number of non-zero patches: '.format(intfrgrm_name)+str(counter_nonz))
 
