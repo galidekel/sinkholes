@@ -173,7 +173,7 @@ if __name__ == '__main__':
     now = datetime.now().strftime("%m_%d_%Hh%M")
 
     args = get_pred_args()
-    args.eleven_days_diff = str2bool(args.eleven_days_diff)
+
     args.plot = str2bool(args.plot)
     args.add_lidar_mask = str2bool(args.add_lidar_mask)
     if not is_running_locally:
