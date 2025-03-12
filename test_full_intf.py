@@ -142,7 +142,7 @@ def get_pred_args():
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--eleven_days_diff',  type=str, default='False', help='Flag to take only 11 days difference interferograms')
 
-    parser.add_argument('--intf_source', type=str, default = 'intf_list', choices=['intf_list', 'test_dataset','preset'])
+    parser.add_argument('--intf_source', type=str, default = 'intf_list', choices=['intf_list', 'test_dataset','preset','all'])
     parser.add_argument('--intf_list', type=str, default = None, help='a list of intf ids divided by comma')
     parser.add_argument('--test_dataset', type=str, default = None, help='path to teset_dastset')
     parser.add_argument('--valset_from_partition', type=str, default=None, help='val set from a partition_File')
@@ -158,8 +158,6 @@ def get_pred_args():
 
     parser.add_argument('--plot', type=str,default='False')
     parser.add_argument('--attn_unet',action='store_true')
-    parser.add_argument('--test_stride', type=int, default=2)
-
 
 
 
@@ -247,7 +245,7 @@ if __name__ == '__main__':
         mask_path = mask_dir + '/' + mask_file_name
         data = np.load(data_path)
         mask = np.load(mask_path)
-        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.test_stride, args.recon_th,mask)
+        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.data_stride, args.recon_th,mask)
 
 
 
