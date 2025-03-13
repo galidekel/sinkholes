@@ -126,12 +126,12 @@ def reconstruct_intf_prediction(data, intf_coords, net,patch_size, stride, rth, 
         # ax2.imshow(mask[i,j])
         # ax3.imshow(pred)
         # plt.show()
-    reconstructed_pred = np.where(reconstructed_pred > rth, 1, 0).astype(np.float32)
+    reconstructed_pred_th = np.where(reconstructed_pred > rth, 1, 0).astype(np.float32)
 
     if mask is None:
         return reconstructed_intf,reconstructed_pred
     else:
-        return reconstructed_intf,reconstructed_mask,reconstructed_pred
+        return reconstructed_intf,reconstructed_mask,reconstructed_pred_th,reconstructed_pred
 
 def get_pred_args():
     import argparse
@@ -248,7 +248,7 @@ if __name__ == '__main__':
         data = np.load(data_path)
         mask = np.load(mask_path)
         print(mask.shape)
-        reconstructed_intf,reconstructed_mask,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.data_stride, args.recon_th,mask)
+        reconstructed_intf,reconstructed_mask,reconstructed_pred_th,reconstructed_pred = reconstruct_intf_prediction(data, intfs_coords, net,(patch_H,patch_W) ,args.data_stride, args.recon_th,mask)
 
 
 
@@ -267,7 +267,8 @@ if __name__ == '__main__':
         polygons.to_file(out_polyg_path)
 
 
-        np.save(prefix +'_pred', reconstructed_pred)
+        np.save(prefix +'_pred_th', reconstructed_pred_th)
+        np.save(prefix +'_pred',reconstructed_pred)
         np.save(prefix +'_image', reconstructed_intf)
         np.save(prefix +'_gt', reconstructed_mask)
 
