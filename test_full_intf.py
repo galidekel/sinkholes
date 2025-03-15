@@ -233,8 +233,8 @@ if __name__ == '__main__':
     logging.info('Model loaded!')
 
     patch_H, patch_W = args.patch_size
-    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) + ('_'+args.days_diff +'days')
-    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.data_stride) + ('_'+args.days_diff +'days')
+    data_dir = args.input_patch_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W)+'_strpp{}'.format(args.data_stride) + ('_'+str(args.days_diff) +'days')
+    mask_dir = args.input_patch_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp{}'.format(args.data_stride) + ('_'+str(args.days_diff) +'days')
 
     for intf in intf_list:
 
