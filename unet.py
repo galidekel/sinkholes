@@ -2,9 +2,27 @@ import torch
 from unet_parts import *
 import matplotlib.pyplot as plt
 
+class SelfAttention2D(nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        self.query = nn.Conv2d(in_channels, in_channels // 8, 1)
+        self.key   = nn.Conv2d(in_channels, in_channels // 8, 1)
+        self.value = nn.Conv2d(in_channels, in_channels, 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
 
+    def forward(self, x):
+        B, C, H, W = x.size()
+        Q = self.query(x).view(B, -1, H * W).permute(0, 2, 1)
+        K = self.key(x).view(B, -1, H * W)
+        V = self.value(x).view(B, -1, H * W)
+
+        attn = torch.bmm(Q, K)
+        attn = F.softmax(attn, dim=-1)
+
+        out = torch.bmm(V, attn.permute(0, 2, 1)).view(B, C, H, W)
+        return self.gamma * out + x
 class UNet(nn.Module):
-    def __init__(self, n_channels, n_classes, bilinear=False):
+    def __init__(self, n_channels, n_classes, bilinear=False,add_attn = False):
         super(UNet, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
@@ -21,6 +39,9 @@ class UNet(nn.Module):
         self.up3 = (Up(256, 128 // factor, bilinear))
         self.up4 = (Up(128, 64, bilinear))
         self.outc = (OutConv(64, n_classes))
+        self.add_attn = add_attn
+        if self.add_attn:
+            self.attn = SelfAttention2D(1024)
 
     def forward(self, x):
         x1 = self.inc(x)
@@ -28,6 +49,8 @@ class UNet(nn.Module):
         x3 = self.down2(x2)
         x4 = self.down3(x3)
         x5 = self.down4(x4)
+        if self.add_attn:
+            x5=self.attn(x5)
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
