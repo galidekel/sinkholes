@@ -15,6 +15,7 @@ from tqdm import tqdm
 #from data_loading import *
 #from mac_gpu import *
 import io
+import os
 
 # import wandb
 from evaluate import evaluate
@@ -69,7 +70,17 @@ def train_model(
     else:
         pref, mask_pref = 'data_patches_', 'mask_patches_'
     start_intf_name = len(pref)
-    intf_list =  [file.split('.')[0][start_intf_name:start_intf_name+17] for file in listdir(image_dir) if ('nonz' in file and args.nonz_only and args.partition_mode!='spatial') or ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'))]
+    intf_list = [
+        file.split('.')[0][start_intf_name:start_intf_name + 17]
+        for file in os.listdir(image_dir)
+        if os.path.isfile(os.path.join(image_dir, file)) and (
+                ('nonz' in file and args.nonz_only and args.partition_mode != 'spatial') or
+                ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'))
+        )
+    ]
+
+
+
     if args.train_with_nonz_th:
         n1 = len(intf_list)
         logging.info('Original list has {} nonz'.format(n1))
