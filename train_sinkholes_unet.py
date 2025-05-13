@@ -16,6 +16,8 @@ from tqdm import tqdm
 #from mac_gpu import *
 import io
 import os
+from torch.utils.data import Subset
+
 
 # import wandb
 from evaluate import evaluate
@@ -226,6 +228,15 @@ def train_model(
         n_val = n_valtmp//2
         n_test = n_valtmp - n_val
         val_set,test_set = random_split(valtmp_set, [n_val,n_test])
+        val_indices = list(range(n_val))  # First n_val samples → validation
+        test_indices = list(range(n_val, n_valtmp))  # The rest → test
+
+        # Define subsets
+        val_set = Subset(valtmp_set, val_indices)
+        test_set = Subset(valtmp_set, test_indices)
+
+
+
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)) )
 
 
