@@ -44,7 +44,7 @@ class AttentionGate(nn.Module):
     def __init__(self, in_channels, gating_channels,reduction_ratio=0.25):
         super(AttentionGate, self).__init__()
 
-        reduced_channels = max(1,in_channels * reduction_ratio)  # Reduce channel size for efficiency
+        reduced_channels = max(1,int(in_channels * reduction_ratio))  # Reduce channel size for efficiency
 
         self.W_x = nn.Conv2d(in_channels, reduced_channels, kernel_size=1, bias=False)
         self.W_g = nn.Conv2d(gating_channels, reduced_channels, kernel_size=1, bias=False)
