@@ -41,7 +41,7 @@ class Down(nn.Module):
 class AttentionGate(nn.Module):
     """Optimized Attention Gate with fewer parameters"""
 
-    def __init__(self, in_channels, gating_channels,reduction_ratio=0.25):
+    def __init__(self, in_channels, gating_channels,reduction_ratio=1):
         super(AttentionGate, self).__init__()
 
         reduced_channels = max(1,int(in_channels * reduction_ratio))  # Reduce channel size for efficiency
