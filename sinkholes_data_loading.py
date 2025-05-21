@@ -16,6 +16,7 @@ from torch.utils.data import Dataset , DataLoader
 from tqdm import tqdm
 import json
 import math
+import albumentations as A
 import matplotlib.pyplot as plt
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -63,7 +64,7 @@ class SubsiDataset(Dataset):
     test_mask_for_nonoverlap_split = []
 
 
-    def __init__(self,args, image_dir, mask_dir, intrfrgrm_list=None, scale: float = 1.0, mask_suffix: str = '',dset = 'train' ):
+    def __init__(self,args, image_dir, mask_dir, intrfrgrm_list=None, scale: float = 1.0, mask_suffix: str = '',dset = 'train',augment = False ):
         super(SubsiDataset, self).__init__()
 
         self.image_dir = Path(image_dir)
@@ -219,7 +220,16 @@ class SubsiDataset(Dataset):
 
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
         logging.info(f'Unique mask values: {self.mask_values}')
-
+        self.do_augmentations = augment
+        if self.do_augmentations:
+            self.augment = A.Compose([
+                A.Rotate(limit=30, p=0.4),
+                A.ElasticTransform(p=0.3),
+                A.RandomBrightnessContrast(p=0.3),
+                A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
+                A.HorizontalFlip(p=0.3),
+                A.GridDistortion(p=0.2),
+            ], additional_targets={'mask': 'mask'})
 
         logging.info(f'Created dataset: from {len(self.ids)} interferograms {len(self.index_map)} patches!!!')
 
@@ -256,6 +266,10 @@ class SubsiDataset(Dataset):
         msk = self.mask_data[intfgrm_num][0][patch_num].astype(np.float32)
         img = self.preprocess(self.mask_values,img,0)
         msk = self.preprocess(self.mask_values,msk,1)
+        if self.do_augmentations:
+            augmented = self.augment(image=img, mask=msk)
+            img = augmented['image']
+            msk = augmented['mask']
 
         assert img.size == msk.size, \
             f'Image and mask should be the same size, but are {img.size} and {msk.size}'

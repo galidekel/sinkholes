@@ -221,7 +221,7 @@ def train_model(
 
     elif args.partition_mode == 'spatial':
         logging.info('Creating Dataset: by spatial partitioning !!!')
-        train_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'train')
+        train_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'train',augment = args.augment)
         valtmp_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'val')
         n_train = len(train_set)
         n_valtmp = len(valtmp_set)
@@ -393,6 +393,8 @@ def get_args():
     parser.add_argument('--use_cleaned_patches', action='store_true')
     parser.add_argument('--add_attn', action='store_true')
     parser.add_argument('--attn_unet', action='store_true')
+    parser.add_argument('--augment', action='store_true',help='augment: only for spatial')
+
 
 
 
