@@ -2,6 +2,39 @@ import torch
 from unet_parts import *
 import matplotlib.pyplot as plt
 
+
+class MultiHeadSelfAttention2D(nn.Module):
+    def __init__(self, in_channels, num_heads=2):
+        super().__init__()
+        assert in_channels % num_heads == 0, "in_channels must be divisible by num_heads"
+
+        self.num_heads = num_heads
+        self.head_dim = in_channels // num_heads
+
+        self.query = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+        self.key = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+        self.value = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+        self.output_proj = nn.Conv2d(in_channels, in_channels, kernel_size=1)
+
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        B, C, H, W = x.size()
+        Q = self.query(x).view(B, self.num_heads, self.head_dim, H * W).permute(0, 1, 3, 2)  # B x heads x HW x head_dim
+        K = self.key(x).view(B, self.num_heads, self.head_dim, H * W)  # B x heads x head_dim x HW
+        V = self.value(x).view(B, self.num_heads, self.head_dim, H * W).permute(0, 1, 3, 2)  # B x heads x HW x head_dim
+
+        attn = torch.matmul(Q, K) / (self.head_dim ** 0.5)  # Scaled dot-product attention
+        attn = F.softmax(attn, dim=-1)
+
+        out = torch.matmul(attn, V)  # B x heads x HW x head_dim
+        out = out.permute(0, 1, 3, 2).contiguous().view(B, C, H, W)  # Merge heads back
+
+        out = self.output_proj(out)
+        return self.gamma * out + x  # Residual connection
+
+
+
 class SelfAttention2D(nn.Module):
     def __init__(self, in_channels):
         super().__init__()
@@ -42,6 +75,7 @@ class UNet(nn.Module):
         self.add_attn = add_attn
         if self.add_attn:
             self.attn = SelfAttention2D(1024)
+            self.attn = MultiHeadSelfAttention2D(1024,8)
 
     def forward(self, x):
         x1 = self.inc(x)
