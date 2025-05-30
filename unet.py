@@ -34,6 +34,56 @@ class MultiHeadSelfAttention2D(nn.Module):
         return self.gamma * out + x  # Residual connection
 
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class ChannelSelfAttention(nn.Module):
+    def __init__(self, in_channels, add_positional_encoding=True):
+        super().__init__()
+        self.in_channels = in_channels
+        self.add_positional_encoding = add_positional_encoding
+
+        self.query = nn.Linear(in_channels, in_channels)
+        self.key = nn.Linear(in_channels, in_channels)
+        self.value = nn.Linear(in_channels, in_channels)
+
+        if add_positional_encoding:
+            self.pos_encoding = nn.Parameter(torch.randn(1, in_channels))  # [1, C]
+
+        self.output_proj = nn.Linear(in_channels, in_channels)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        B, C, H, W = x.size()
+
+        # Reshape to [B, C, N] where N = H*W (each channel is a token)
+        x_flat = x.view(B, C, -1)  # [B, C, N]
+
+        # Compute global average across spatial dims → [B, C]
+        x_pooled = x_flat.mean(dim=-1)  # [B, C]
+
+        if self.add_positional_encoding:
+            x_pooled = x_pooled + self.pos_encoding  # Add positional encoding over channels
+
+        # Linear projections across channels
+        Q = self.query(x_pooled)  # [B, C]
+        K = self.key(x_pooled)  # [B, C]
+        V = self.value(x_pooled)  # [B, C]
+
+        # Compute attention across channels
+        attn = torch.bmm(Q.unsqueeze(2), K.unsqueeze(1))  # [B, C, C]
+        attn = F.softmax(attn / (self.in_channels ** 0.5), dim=-1)
+
+        out = torch.bmm(attn, V.unsqueeze(2)).squeeze(-1)  # [B, C]
+        out = self.output_proj(out)  # [B, C]
+
+        # Expand back to [B, C, H, W]
+        out = out.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, H, W)
+
+        return self.gamma * out + x  # Residual connection
+
 
 class SelfAttention2D(nn.Module):
     def __init__(self, in_channels):
@@ -76,6 +126,7 @@ class UNet(nn.Module):
         if self.add_attn:
             self.attn = SelfAttention2D(1024)
             self.attn = MultiHeadSelfAttention2D(1024,8)
+            self.attn = ChannelSelfAttention(in_channels=1024)
 
     def forward(self, x):
         x1 = self.inc(x)
