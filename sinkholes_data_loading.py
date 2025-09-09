@@ -220,7 +220,7 @@ class SubsiDataset(Dataset):
 
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
         logging.info(f'Unique mask values: {self.mask_values}')
-        self.do_augmentations = augment
+        self.do_augmentations = (augment and dset == 'train')
         if self.do_augmentations:
             self.augment = A.Compose([
                 A.Rotate(limit=30, p=0.4),
@@ -230,6 +230,7 @@ class SubsiDataset(Dataset):
                 A.HorizontalFlip(p=0.3),
                 A.GridDistortion(p=0.2),
             ], additional_targets={'mask': 'mask'})
+
 
         logging.info(f'Created dataset: from {len(self.ids)} interferograms {len(self.index_map)} patches!!!')
 
