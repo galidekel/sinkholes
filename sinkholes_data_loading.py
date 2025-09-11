@@ -220,7 +220,7 @@ class SubsiDataset(Dataset):
 
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
         logging.info(f'Unique mask values: {self.mask_values}')
-        self.do_augmentations = (augment and dset == 'train')
+        self.do_augmentations = (args.augment and dset == 'train')
         if self.do_augmentations:
             self.augment = A.Compose([
                 A.Rotate(limit=30, p=0.4),
