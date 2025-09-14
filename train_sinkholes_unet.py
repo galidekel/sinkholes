@@ -138,7 +138,7 @@ def train_model(
             pickle.dump(test_set, f)
 
     elif args.partition_mode == 'random_by_intf':
-        logging.info('Creating Dataset: Randlomly partitioning by Interferograms !!!')
+        logging.info('Creating Dataset: Randomly partitioning by Interferograms !!!')
         unique_intf_list = intf_list
         if args.test_data_to_exclude is not None:
             with open(args.test_data_to_exclude, 'rb') as file:
@@ -176,6 +176,8 @@ def train_model(
 
             else:
                 tv_list = list(set(unique_intf_list) - set(test_list))
+                logging.info(f' train + val sets include {len(tv_list)} intfs')
+                logging.info(f' val percent is  {val_percent}')
                 random.shuffle(tv_list)
                 n_val = int(len(tv_list) * (val_percent))
                 n_train = len(tv_list) - n_val
