@@ -81,8 +81,6 @@ def train_model(
         )
     ]
 
-
-
     if args.train_with_nonz_th:
         n1 = len(intf_list)
         logging.info('Original list has {} nonz'.format(n1))
@@ -184,9 +182,11 @@ def train_model(
                 if n_val == 0:
                     logging.info('not enough data for partitioning by interferograms !!')
                     sys.exit(0)
+
                 train_list = tv_list[:n_train]
                 val_list = tv_list[n_train:]
-
+                train_list = tv_list ##hack: val = test
+                val_list = test_data.ids###hack: val=test
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train')
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val')
