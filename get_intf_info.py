@@ -85,9 +85,9 @@ def crop_to_start_xy(intf: np.ndarray,
         raise ValueError(f"Requested start is outside the image: row_off={row_off}, col_off={col_off}, shape={intf.shape}")
 
     # Determine crop size
-    if width is None:
+
         width = W - col_off
-    if height is None:
+
         height = H - row_off
 
     # Bounds check for end
