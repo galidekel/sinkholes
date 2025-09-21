@@ -86,9 +86,9 @@ def crop_to_start_xy(intf: np.ndarray,
 
     # Determine crop size
 
-        width = W - col_off
+    width = W - col_off
 
-        height = H - row_off
+    height = H - row_off
 
     # Bounds check for end
     if col_off + width > W or row_off + height > H:
