@@ -14,7 +14,7 @@ from train_sinkholes_unet import str2bool
 from get_intf_info import *
 
 logging.basicConfig(level=logging.INFO)
-
+import json
 
 def patchify(input_array, window_size, stride, mask_array= None,nonz_pathces = True):
     if mask_array is not None:
@@ -26,6 +26,7 @@ def patchify(input_array, window_size, stride, mask_array= None,nonz_pathces = T
     rows, cols = input_array.shape
     data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = [],[],[],[]
 
+    nonz_indices = []
     for i in range(0, rows - window_size[0] + 1, stride[0]):
       data_row , mask_row = [],[]
       for j in range(0, cols - window_size[1] + 1, stride[1]):
@@ -37,13 +38,14 @@ def patchify(input_array, window_size, stride, mask_array= None,nonz_pathces = T
             if mask_patch.any() !=0 and nonz_pathces:
                 data_patches_nonz.append(data_patch)
                 mask_patches_nonz.append(mask_patch)
+                nonz_indices.append([i,j])
 
       data_patches.append(data_row)
       mask_patches.append(mask_row)
     if mask_array is None:
        return np.array(data_patches)
     else:
-        return np.array(data_patches),np.array(mask_patches), np.array(data_patches_nonz), np.array(mask_patches_nonz)
+        return np.array(data_patches),np.array(mask_patches), np.array(data_patches_nonz), np.array(mask_patches_nonz),nonz_indices
 def get_args():
     parser = argparse.ArgumentParser(description='Prepare patches of intrfrgrm data')
     parser.add_argument('--by_list',  type=str, default=None, help='From an input list')
@@ -92,7 +94,7 @@ if __name__ == '__main__':
             if filename.endswith('.unw') and any(input_intf[:8] ==  filename[9:17] and input_intf[9:]==filename[25:33]for input_intf in input_intfs):
                 input_files.append(filename)
                 input_file_paths = [Path(args.input_dir) / file for file in input_files]
-
+    nonzero_mask_inds_by_intf = {}
     for item in input_file_paths:
         gfile_name = item.name
         intfrgrm_name = gfile_name.split('.')[0][9:17]+gfile_name.split('.')[0][24:33]
@@ -189,7 +191,8 @@ if __name__ == '__main__':
             else:
                 data,mask,_,_,_= crop_to_start_xy(data,mask,x0,y0,35.25,31.44)
 
-        data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = patchify(data, patch_size, stride= (patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch), mask_array=mask)
+        data_patches,mask_patches,data_patches_nonz,mask_patches_nonz,nonz_indices = patchify(data, patch_size, stride= (patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch), mask_array=mask)
+        nonzero_mask_inds_by_intf[intfrgrm_name] = nonz_indices
         counter_nonz = data_patches_nonz.shape[0]
         logging.info('intrfrgrm {}: number of non-zero patches: '.format(intfrgrm_name)+str(counter_nonz))
 
@@ -232,3 +235,42 @@ if __name__ == '__main__':
                   plt.show()
                else:
                  plt.close()###
+    import os
+
+    items_per_line = 50
+    out_path = os.path.join(data_output_dir, "nonz_indices.json")
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("{\n")
+        keys = list(nonzero_mask_inds_by_intf.keys())
+        for ki, intf_id in enumerate(keys):
+            pairs = nonzero_mask_inds_by_intf[intf_id]
+            # ensure plain Python ints
+            pairs = [(int(i), int(j)) for (i, j) in pairs]
+
+            f.write(f'  "{intf_id}": [\n')
+            n = len(pairs)
+
+            if n == 0:
+                f.write("  ]")
+            else:
+                for i, (pi, pj) in enumerate(pairs):
+                    # start a new logical line every items_per_line
+                    if i % items_per_line == 0:
+                        f.write("    ")
+                    f.write(f"[{pi},{pj}]")
+                    if i != n - 1:
+                        f.write(", ")
+                    # newline after each chunk of items_per_line, except after the very last element
+                    if (i % items_per_line == items_per_line - 1) and (i != n - 1):
+                        f.write("\n")
+                f.write("\n  ]")
+
+            # comma between interferograms
+            if ki != len(keys) - 1:
+                f.write(",\n")
+            else:
+                f.write("\n")
+        f.write("}\n")
+
+    print("Wrote", out_path)
