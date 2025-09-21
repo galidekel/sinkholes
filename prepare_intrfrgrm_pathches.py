@@ -11,16 +11,18 @@ from pathlib import Path
 import os
 from train_sinkholes_unet import str2bool
 
+from get_intf_info import *
+
 logging.basicConfig(level=logging.INFO)
 
 
 def patchify(input_array, window_size, stride, mask_array= None,nonz_pathces = True):
     if mask_array is not None:
         assert input_array.shape == mask_array.shape, "Mask array should be the same shape as input array"
-        mask_array = mask_array[:, 4000:8500]
+        mask_array = mask_array[:, 3000:8500]
 
 
-    input_array = input_array[:, 4000:8500]
+    input_array = input_array[:, 3000:8500]
     rows, cols = input_array.shape
     data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = [],[],[],[]
 
@@ -52,6 +54,8 @@ def get_args():
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--strides_per_patch',type=int, default=2, help='strides per patch - 2 means half a window stride, 4 means quarter a window stride etc')
     parser.add_argument('--intf_22_23',  type=str, default='False')
+    parser.add_argument('--align_frames',  action='store_true')
+
 
     parser.add_argument('--days_diff',  type=int, default=11)
 
@@ -67,8 +71,8 @@ if __name__ == '__main__':
     gdf = gpd.read_file(args.gt_polygon_file_path)
     patch_size = tuple(args.patch_size)
     patch_H, patch_W = patch_size
-    data_output_dir = args.output_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_'+str(req_days_diff)+'days') + ('_22_23' if args.intf_22_23 else '')
-    mask_output_dir = args.output_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_'+str(req_days_diff)+'days') +  ('_22_23' if args.intf_22_23 else '')
+    data_output_dir = args.output_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_'+str(req_days_diff)+'days') + ('_22_23' if args.intf_22_23 else '')+('_Aligned' if args.align_frames else '')
+    mask_output_dir = args.output_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_'+str(req_days_diff)+'days') +  ('_22_23' if args.intf_22_23 else '')+('_Aligned' if args.align_frames else '')
 
 
     for item in [data_output_dir, mask_output_dir]:
@@ -104,21 +108,11 @@ if __name__ == '__main__':
         elif days_diff != req_days_diff or start_datetime.year >2021:
             continue
 
-        with open(args.input_dir+'/'+gfile_name + '.ers') as f:
-               for line in f:
-                  if 'NrOfLines' in line:
-                     NLINES = int(line.strip().split()[-1])
-                  elif 'NrOfCellsPerLine' in line:
-                    NCELLS = int(line.strip().split()[-1])
-                  if 'ByteOrder' in line:
-                     byte_order = line.strip().split()[-1]
-                  if 'Eastings' in line:
-                     x0 = float(line.strip().split()[-1])
-                  if 'Northings' in line:
-                     y0 = float(line.strip().split()[-1])
+        intf_mdata=get_intf_coords(intfrgrm_name)
+        x0, y0, dx, dy,ncells, nlines,bo,frame = intf_mdata[0], intf_mdata[1], intf_mdata[2], intf_mdata[3], intf_mdata[4],intf_mdata[5], intf_mdata[10], intf_mdata[11]
 
-        data = np.fromfile(args.input_dir+'/'+gfile_name, dtype=np.float32, count=-1, sep='', offset=0).reshape(NLINES, NCELLS)
-        if byte_order == 'MSBFirst':
+        data = np.fromfile(args.input_dir+'/'+gfile_name, dtype=np.float32, count=-1, sep='', offset=0).reshape(nlines, ncells)
+        if bo == 'MSBFirst':
             data = data.byteswap().newbyteorder('<')
 
 
@@ -126,8 +120,8 @@ if __name__ == '__main__':
         if subset_polygs.empty:
             logging.info('no GT polygons for interferogram: ' + intfrgrm_name)
             continue
-        transform = rasterio.transform.from_origin(x0, y0, 0.00002777, 0.00002777)  # Adjust resolution and (North,West) origin to the interferogram
-        height, width = NLINES,NCELLS  # Adjust dimension to match the interferogram
+        transform = rasterio.transform.from_origin(x0, y0, dx, dy)  # Adjust resolution and (North,West) origin to the interferogram
+        height, width = nlines,ncells  # Adjust dimension to match the interferogram
         profile = {
             'driver': 'GTiff',
             'count': 1,
@@ -140,8 +134,8 @@ if __name__ == '__main__':
 
         #Create the mask using rasterio's geometry_mask
         mask = geometry_mask(subset_polygs.geometry, transform=transform, invert=True, out_shape=(height, width)).astype(np.uint8)
-        extent = [x0, x0 + 0.00002777 * (NCELLS), y0 - 0.00002777 * (NLINES), y0]
-        logging.info('long lat range: {}'.format(extent))
+        extent = [x0, x0 + dx * (ncells), y0 - dy * (nlines), y0]
+        logging.info('initial long lat range: {}'.format(extent))
 
         if args.plot_data:
             plt.rcParams['backend'] = 'Qt5Agg'
@@ -189,6 +183,11 @@ if __name__ == '__main__':
         #     # Read the mask data into a NumPy array
         #     mask_array = src.read(1)
 
+        if args.align_frames:
+            if frame=='North':
+                data,mask,_,_,_= crop_to_start_xy(data,mask,x0,y0,35.3,31.79)
+            else:
+                data,mask,_,_,_= crop_to_start_xy(data,mask,x0,y0,35.25,31.44)
 
         data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = patchify(data, patch_size, stride= (patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch), mask_array=mask)
         counter_nonz = data_patches_nonz.shape[0]
