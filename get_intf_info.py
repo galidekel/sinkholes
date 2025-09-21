@@ -151,10 +151,12 @@ def _is_on_grid(x_star: float, x0: float, step: float, atol_pix=1e-9) -> bool:
     col = (x_star - x0) / step
     return abs(col - round(col)) <= atol_pix
 
+from typing import Optional, Dict, Any, Iterable, Tuple
+
 def build_common_grid_for_region(
     meta_dict: Dict[str, Dict[str, Any]],
-    frame_label: str,                         # "North" or "South"
-    keys: Iterable[str] | None = None,        # optional subset of keys
+    frame_label: str,                      # "North" or "South"
+    keys: Optional[Iterable[str]] = None,  # optional subset of keys
     tol_pix: float = 0.01
 ) -> Tuple[float, float, int, int, float, float]:
     """
