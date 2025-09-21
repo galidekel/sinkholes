@@ -37,8 +37,6 @@ def crop_to_start_xy(intf: np.ndarray,
                      x_star: float, y_star: float,  # desired top-left to crop to
                      dx: float = 2.777e-05,
                      dy: float = 2.777e-05,
-                     width: int | None = None,
-                     height: int | None = None,
                      tol: float = 1e-2):
     """
     Crop intf and mask so that the output starts at (x_star, y_star).
