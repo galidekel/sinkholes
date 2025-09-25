@@ -78,7 +78,7 @@ class SubsiDataset(Dataset):
         self.mask_suffix = mask_suffix
         if args.add_temporal:
             self.temporal = True
-            with open(image_dir+'/'+'nonz_ind_dict.json',"r") as f:
+            with open(image_dir+'/'+'nonz_indices.json',"r") as f:
                 nonz_pathces_dict = json.load(f)
                 self.seq_dict  = seq_dict
         else:
