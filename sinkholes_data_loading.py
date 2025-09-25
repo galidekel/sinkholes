@@ -64,7 +64,7 @@ class SubsiDataset(Dataset):
     test_mask_for_nonoverlap_split = []
 
 
-    def __init__(self,args, image_dir, mask_dir, intrfrgrm_list=None, scale: float = 1.0, mask_suffix: str = '',dset = 'train',augment = False ):
+    def __init__(self,args, image_dir, mask_dir, intrfrgrm_list=None, scale: float = 1.0, mask_suffix: str = '',dset = 'train',augment = False,seq_dict=None ):
         super(SubsiDataset, self).__init__()
 
         self.image_dir = Path(image_dir)
@@ -76,7 +76,14 @@ class SubsiDataset(Dataset):
             assert intrfrgrm_list is not None, "Partition mode 'preset by intf' requires an input intrfrgrm list"
         self.scale = scale
         self.mask_suffix = mask_suffix
-        if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train and not args.nonoverlap_tr_tst:
+        if args.add_temporal:
+            self.temporal = True
+            with open(image_dir+'/'+'nonz_ind_dict.json',"r") as f:
+                nonz_pathces_dict = json.load(f)
+                self.seq_dict  = seq_dict
+        else:
+            self.temporal = False
+        if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train and not args.nonoverlap_tr_tst and not self.temporal:
           pref , mask_pref = 'data_patches_nonz_','mask_patches_nonz_'
         else:
           pref , mask_pref = 'data_patches_', 'mask_patches_'
@@ -108,8 +115,27 @@ class SubsiDataset(Dataset):
 
                 image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + suff+'.npy'))
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +mask_suff+'.npy'))
+                if self.temporal:
+                    rc = nonz_pathces_dict[id]  # [(x,y), ...]
+                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present
 
-                if args.retrain_with_fpz:
+                    # load patches for all timesteps (current in-memory, prevs from disk)
+                    pa = [image_data if tid == id else np.load(join(
+                        self.image_dir,
+                        pref + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy"
+                    ))
+                          for tid in tids]  # each (X,Y,H,W)
+
+                    # image: [N,T,H,W]  |  mask: [N,H,W]
+                    # current (gives [N, T, H, W])
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc], axis=0) for p in pa]  # T * [N,H,W]
+
+                    # time-first variant (gives [T, N, H, W]):
+                    image_data = np.stack(patches_per_t, axis=0)  # [T,N,H,W]
+
+                    mask_data = np.stack([mask_data[x, y] for (x, y) in rc], axis=0)
+
+                elif args.retrain_with_fpz:
                     fpz_path = join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy')
                     if os.path.isfile(fpz_path):
 
@@ -119,7 +145,7 @@ class SubsiDataset(Dataset):
                         mask_data = np.concatenate((mask_data,z_mask_data),axis=0)
                     else:
                         logging.info('Note! No fpz patches for intf {}'.format(id))
-                if args.nonoverlap_tr_tst :
+                elif args.nonoverlap_tr_tst :
                     if dset == 'train':
                         nz_patches,nz_masks,nz_indices = [],[],[]
                         for ii in range(image_data.shape[0]):
@@ -149,7 +175,7 @@ class SubsiDataset(Dataset):
                     elif dset == 'test':
                         image_data, mask_data =  SubsiDataset.test_dataset_for_nonoverlap_split[i],SubsiDataset.test_mask_for_nonoverlap_split[i]
 
-                if not args.nonz_only or args.add_nulls_to_train:
+                elif not args.nonz_only or args.add_nulls_to_train:
                     image_data = image_data.reshape(-1,image_data.shape[2],image_data.shape[3])
                     mask_data = mask_data.reshape(-1,mask_data.shape[2],mask_data.shape[3])
 
@@ -203,7 +229,8 @@ class SubsiDataset(Dataset):
                     mask_data = np.array(mask_nz)
                     logging.info('Sptial partition: Created {} patches for {} set'.format(image_data.shape[0], dset))
 
-            image_data = np.expand_dims(image_data,axis=0)
+            if not self.temporal:
+                image_data = np.expand_dims(image_data,axis=0)
             mask_data = np.expand_dims(mask_data,axis=0)
             len_examples = image_data.shape[1]
 
@@ -217,9 +244,10 @@ class SubsiDataset(Dataset):
                 p.imap(partial(unique_mask_values, mask_dir=self.mask_dir, mask_suffix='_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride)+mask_suff+'.npy'), self.ids),
                 total=len(self.ids)
             ))
-
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
         logging.info(f'Unique mask values: {self.mask_values}')
+
+
         self.do_augmentations = (args.augment and dset == 'train')
         if self.do_augmentations:
             self.augment = A.Compose([
@@ -262,24 +290,50 @@ class SubsiDataset(Dataset):
             return img
 
     def __getitem__(self, sample):
-        intfgrm_num, patch_num= self.index_map[sample][0], self.index_map[sample][1]
-        img = self.image_data[intfgrm_num][0][patch_num].astype(np.float32)
-        msk = self.mask_data[intfgrm_num][0][patch_num].astype(np.float32)
-        img = self.preprocess(self.mask_values,img,0)
-        msk = self.preprocess(self.mask_values,msk,1)
+        intf_idx, patch_idx = self.index_map[sample]
+
+        if getattr(self, "temporal", False):
+            # image: [T, N, H, W] -> pick patch -> [T, H, W]
+            img = self.image_data[intf_idx][:, patch_idx].astype(np.float32)
+            # mask:  [1, N, H, W] -> pick patch & drop singleton -> [H, W]
+            msk = self.mask_data[intf_idx][0, patch_idx].astype(np.float32)
+        else:
+            # image/mask stored as [1, N, H, W] -> pick channel 0 & patch -> [H, W]
+            img = self.image_data[intf_idx][0, patch_idx].astype(np.float32)
+            msk = self.mask_data[intf_idx][0, patch_idx].astype(np.float32)
+
+        # Preprocess
+        img = self.preprocess(self.mask_values, img, 0)  # keeps shape; (T,H,W) or (H,W)
+        msk = self.preprocess(self.mask_values, msk, 1)  # -> (H,W) labels
+
+        # Augment (Albumentations expects channels-last)
         if self.do_augmentations:
-            augmented = self.augment(image=img, mask=msk)
-            img = augmented['image']
-            msk = augmented['mask']
+            if getattr(self, "temporal", False):
+                aug = self.augment(image=img.transpose(1, 2, 0), mask=msk)  # (H,W,T)
+                img = aug["image"].transpose(2, 0, 1)  # back to (T,H,W)
+                msk = aug["mask"]
+            else:
+                aug = self.augment(image=img, mask=msk)  # both (H,W)
+                img = aug["image"]
+                msk = aug["mask"]
 
-        assert img.size == msk.size, \
-            f'Image and mask should be the same size, but are {img.size} and {msk.size}'
+        # Sanity: spatial sizes must match
+        assert img.shape[-2:] == msk.shape[-2:], \
+            f"Spatial size mismatch: image {img.shape} vs mask {msk.shape}"
+
+        # To tensors
+        if getattr(self, "temporal", False):
+            # (T,H,W)
+            img_t = torch.as_tensor(img.copy()).float().contiguous()
+        else:
+            # (1,H,W)
+            img_t = torch.as_tensor(img.copy()).unsqueeze(0).float().contiguous()
+
+        msk_t = torch.as_tensor(msk.copy()).long().contiguous()
+
+        return {"image": img_t, "mask": msk_t}
 
 
-        return {
-            'image': torch.as_tensor(img.copy()).unsqueeze(0).float().contiguous(),
-            'mask': torch.as_tensor(msk.copy()).long().contiguous()
-        }
 if __name__ == '__main__':
      intrfrgrm_list = None#['20230802T153919_20230813T153921']
      dataset = SubsiDataset('./data_patches', './mask_patches')

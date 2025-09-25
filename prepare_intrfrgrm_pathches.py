@@ -16,36 +16,55 @@ from get_intf_info import *
 logging.basicConfig(level=logging.INFO)
 import json
 
-def patchify(input_array, window_size, stride, mask_array= None,nonz_pathces = True):
+def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=True):
     if mask_array is not None:
         assert input_array.shape == mask_array.shape, "Mask array should be the same shape as input array"
         mask_array = mask_array[:, 3000:8500]
 
-
     input_array = input_array[:, 3000:8500]
     rows, cols = input_array.shape
-    data_patches,mask_patches,data_patches_nonz,mask_patches_nonz = [],[],[],[]
+    H, W = window_size
+    Sy, Sx = stride
 
-    nonz_indices = []
-    for i in range(0, rows - window_size[0] + 1, stride[0]):
-      data_row , mask_row = [],[]
-      for j in range(0, cols - window_size[1] + 1, stride[1]):
-         data_patch = input_array[i:i + window_size[0], j:j + window_size[1]]
-         data_row.append(data_patch)
-         if mask_array is not None:
-            mask_patch = mask_array[i:i + window_size[0], j:j + window_size[1]]
-            mask_row.append(mask_patch)
-            if mask_patch.any() !=0 and nonz_pathces:
-                data_patches_nonz.append(data_patch)
-                mask_patches_nonz.append(mask_patch)
-                nonz_indices.append([i,j])
+    data_patches, mask_patches = [], []
+    data_patches_nonz, mask_patches_nonz = [], []
+    nonz_indices = []  # [(row_idx_in_patch_grid, col_idx_in_patch_grid), ...]
 
-      data_patches.append(data_row)
-      mask_patches.append(mask_row)
+    idx_i = 0
+    for i in range(0, rows - H + 1, Sy):
+        data_row, mask_row = [], []
+        idx_j = 0
+        for j in range(0, cols - W + 1, Sx):
+            data_patch = input_array[i:i + H, j:j + W]
+            data_row.append(data_patch)
+
+            if mask_array is not None:
+                mask_patch = mask_array[i:i + H, j:j + W]
+                mask_row.append(mask_patch)
+
+                if nonz_pathces and mask_patch.any():
+                    data_patches_nonz.append(data_patch)
+                    mask_patches_nonz.append(mask_patch)
+                    # <<< NEW: save GRID coords, not pixel offsets >>>
+                    nonz_indices.append([idx_i, idx_j])
+
+            idx_j += 1
+        data_patches.append(data_row)
+        if mask_array is not None:
+            mask_patches.append(mask_row)
+        idx_i += 1
+
     if mask_array is None:
-       return np.array(data_patches)
+        return np.array(data_patches)
     else:
-        return np.array(data_patches),np.array(mask_patches), np.array(data_patches_nonz), np.array(mask_patches_nonz),nonz_indices
+        return (
+            np.array(data_patches),
+            np.array(mask_patches),
+            np.array(data_patches_nonz),
+            np.array(mask_patches_nonz),
+            nonz_indices,  # grid coords in the saved [X,Y,H,W] arrays
+        )
+
 def get_args():
     parser = argparse.ArgumentParser(description='Prepare patches of intrfrgrm data')
     parser.add_argument('--by_list',  type=str, default=None, help='From an input list')

@@ -163,6 +163,6 @@ class UNet(nn.Module):
         return full_sum
 
 if __name__ == '__main__':
-    unet = UNet(1,1)
+    unet = UNet(1,1,add_attn=True)
     unet_size = unet.get_num_params()
     print(unet_size)

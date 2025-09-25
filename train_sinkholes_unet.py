@@ -15,6 +15,7 @@ from tqdm import tqdm
 #from data_loading import *
 #from mac_gpu import *
 import io
+from get_intf_info import *
 import os
 from torch.utils.data import Subset
 
@@ -60,6 +61,10 @@ def train_model(
     image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
     mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
     #
+    if args.add_temporal:
+        image_dir += '_Aligned'
+        mask_dir += '_Aligned'
+
     if args.use_cleaned_patches:
         image_dir += '/cleaned'
         mask_dir += '/cleaned'
@@ -67,7 +72,7 @@ def train_model(
         #sys.exit(0)
     logging.info('input patch directories: {} and {}'.format(image_dir, mask_dir))
     assert os.path.exists(image_dir) and os.path.exists(image_dir), 'The data you are requesting does not exist, please check if you prepared it at the preparation stage'
-    if args.nonz_only and args.partition_mode != 'spatial':
+    if args.nonz_only and args.partition_mode != 'spatial' and not args.add_temporal:
         pref, mask_pref = 'data_patches_nonz_', 'mask_patches_nonz_'
     else:
         pref, mask_pref = 'data_patches_', 'mask_patches_'
@@ -76,8 +81,8 @@ def train_model(
         file.split('.')[0][start_intf_name:start_intf_name + 17]
         for file in os.listdir(image_dir)
         if os.path.isfile(os.path.join(image_dir, file)) and (
-                ('nonz' in file and args.nonz_only and args.partition_mode != 'spatial') or
-                ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'))
+                ('nonz' in file and args.nonz_only and args.partition_mode != 'spatial'and not args.add_temporal) or
+                ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'or args.add_temporal))
         )
     ]
 
@@ -138,6 +143,13 @@ def train_model(
     elif args.partition_mode == 'random_by_intf':
         logging.info('Creating Dataset: Randomly partitioning by Interferograms !!!')
         unique_intf_list = intf_list
+        prev_dict=None
+        if args.add_temporal:
+            with open(args.intf_dict_path, "r") as f:
+                intf_info = json.load(f)
+            prev_dict,updated_intf_list = find_11day_sequences(intf_info,k_prev=args.k_prevs, restrict_to=unique_intf_list)
+            unique_intf_list = updated_intf_list
+
         if args.test_data_to_exclude is not None:
             with open(args.test_data_to_exclude, 'rb') as file:
                 test_data = pickle.load(file)
@@ -158,6 +170,7 @@ def train_model(
             n_train = len(tv_list) - n_val
             train_list = tv_list[:n_train]
             val_list = tv_list[n_train:]
+
 
         else:
             if test_list is None:
@@ -185,12 +198,13 @@ def train_model(
 
                 train_list = tv_list[:n_train]
                 val_list = tv_list[n_train:]
-                train_list = tv_list ##hack: val = test
-                val_list = test_data.ids###hack: val=test
+        train_list = ['20191210_20191221']
+        val_list = ['20191210_20191221']
+        test_list = ['20191210_20191221']
 
-        train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train')
-        val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val')
-        test_set = SubsiDataset(args,image_dir, mask_dir, intrfrgrm_list=test_list,dset = 'test')
+        train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
+        val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
+        test_set = SubsiDataset(args,image_dir, mask_dir, intrfrgrm_list=test_list,dset = 'test',seq_dict=prev_dict)
         logging.info('train intfs: ' + str(train_set.ids))
         logging.info('val intfs: ' + str(val_set.ids))
         logging.info('test intfs:' + str(test_set.ids))
@@ -240,8 +254,6 @@ def train_model(
 
 
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)) )
-
-
 
 
         logging.info('Spatial partitioning: Val percent is ' + str(int(100*n_val/(n_train+n_val+n_test))) + '%')
@@ -396,8 +408,8 @@ def get_args():
     parser.add_argument('--add_attn', action='store_true')
     parser.add_argument('--attn_unet', action='store_true')
     parser.add_argument('--augment', action='store_true',help='augment: only for spatial')
-
-
+    parser.add_argument('--add_temporal', action='store_true')
+    parser.add_argument('--k_prevs',type=int, default=2)
 
 
     return parser.parse_args()
@@ -445,14 +457,18 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #device = get_default_device()
     logging.info(f'Using device {device}')
+    if args.add_temporal:
+        num_c = 3
+    else:
+        num_c=1
 
     # Change here to adapt to your data
     # n_channels=1 for intrfrgrm images
     # n_classes is the number of probabilities you want to get per pixel
     if args.attn_unet:
-        model = AttentionUNet(n_channels=1, n_classes=args.classes,bilinear=args.bilinear)
+        model = AttentionUNet(n_channels=num_c, n_classes=args.classes,bilinear=args.bilinear)
     else:
-        model = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear,add_attn=args.add_attn)
+        model = UNet(n_channels=num_c, n_classes=args.classes, bilinear=args.bilinear,add_attn=args.add_attn)
     model = model.to(memory_format=torch.channels_last)
 
     logging.info(f'Network:\n'

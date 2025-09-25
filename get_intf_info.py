@@ -217,6 +217,110 @@ intf_dict_file = open('intf_coord.json', 'r')
 intf_coords = json.load(intf_dict_file)
 new_grid = build_common_grid_for_region(intf_coords,'North')
 print(new_grid)
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Tuple
+
+def find_11day_sequences(
+    meta: Dict[str, Dict[str, Any]],
+    k_prev: int = 2,
+    step_days: int = 11,
+    restrict_to: Optional[List[str]] = None,
+    require_current_nonz_gt0: bool = True,
+) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """
+    Build per-interferogram chains:
+      returns (chains_map, valid_currents)
+
+      chains_map = {
+         current_key: {
+            "prevs": [prev_K, ..., prev_1],   # oldest -> most recent
+            "frame": "North" or "South"
+         },
+         ...
+      }
+
+      valid_currents = [current_key, ...]     # only those with full K-previous chains
+
+    Rules:
+      - Only consider interferograms with duration == step_days (default 11).
+      - 'frame' is taken from meta[k]['frame'] and must be 'North' or 'South'.
+      - Previous frames are required exactly i*step_days earlier (i=1..K),
+        and must belong to the SAME frame as current.
+      - If require_current_nonz_gt0=True, current must have nonz_num > 0.
+      - If restrict_to is provided, only those current keys are attempted.
+    """
+
+    def parse_key(k: str):
+        s, e = k.split("_")
+        sd = datetime.strptime(s, "%Y%m%d").date()
+        ed = datetime.strptime(e, "%Y%m%d").date()
+        return sd, ed, (ed - sd).days
+
+    def make_key(sd, ed) -> str:
+        return sd.strftime("%Y%m%d") + "_" + ed.strftime("%Y%m%d")
+
+    # Precompute durations
+    daydiff: Dict[str, int] = {}
+    for k in meta.keys():
+        sd, ed, dd = parse_key(k)
+        daydiff[k] = dd
+
+    all_keys = set(meta.keys())
+    curr_keys = list(all_keys if restrict_to is None else (all_keys & set(restrict_to)))
+
+    # Partition keys by frame
+    frame_groups = {"North": set(), "South": set()}
+    for k, info in meta.items():
+        frm = info.get("frame")
+        if frm in frame_groups:
+            frame_groups[frm].add(k)
+
+    chains_map: Dict[str, Dict[str, Any]] = {}
+    valid_intfs: List[str] = []
+
+    for cur_key in curr_keys:
+        info = meta.get(cur_key)
+        if not info:
+            continue
+
+        frm = info.get("frame")
+        if frm not in frame_groups:
+            continue  # skip 'Boundary'/missing/invalid
+
+        sd, ed, dd = parse_key(cur_key)
+        if dd != step_days:
+            continue
+
+        if require_current_nonz_gt0:
+            nonz_raw = info.get("nonz_num", 0)
+            try:
+                nonz = int(nonz_raw)
+            except Exception:
+                nonz = 0
+            if nonz <= 0:
+                continue
+
+        # Build previous list within SAME frame group
+        group = frame_groups[frm]
+        prevs: List[str] = []
+        ok = True
+        # build in oldest->newest order
+        for i in range(k_prev, 0, -1):
+            psd = sd - timedelta(days=i * step_days)
+            ped = ed - timedelta(days=i * step_days)
+            pk = make_key(psd, ped)
+            if (pk not in group) or (daydiff.get(pk) != step_days):
+                ok = False
+                break
+            prevs.append(pk)
+
+        if not ok:
+            continue
+
+        chains_map[cur_key] = {"prevs": prevs, "frame": frm}
+        valid_intfs.append(cur_key)
+
+    return chains_map, valid_intfs
 
 if __name__ == '__main__':
     intf = '20190730_20190810'
