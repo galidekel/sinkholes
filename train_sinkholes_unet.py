@@ -198,9 +198,7 @@ def train_model(
 
                 train_list = tv_list[:n_train]
                 val_list = tv_list[n_train:]
-        train_list = ['20191210_20191221']
-        val_list = ['20191210_20191221']
-        test_list = ['20191210_20191221']
+
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
