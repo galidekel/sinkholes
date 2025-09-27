@@ -138,9 +138,9 @@ if __name__ == '__main__':
 
 
         subset_polygs = gdf[(gdf['start_date']==start_date) & (gdf['end_date']==end_date)]
-        if subset_polygs.empty:
-            logging.info('no GT polygons for interferogram: ' + intfrgrm_name)
-            continue
+        # if subset_polygs.empty:
+        #     logging.info('no GT polygons for interferogram: ' + intfrgrm_name)
+        #     continue
         transform = rasterio.transform.from_origin(x0, y0, dx, dy)  # Adjust resolution and (North,West) origin to the interferogram
         height, width = nlines,ncells  # Adjust dimension to match the interferogram
         profile = {
