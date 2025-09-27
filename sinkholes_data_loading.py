@@ -126,14 +126,13 @@ class SubsiDataset(Dataset):
                     ))
                           for tid in tids]  # each (X,Y,H,W)
 
-                    # image: [N,T,H,W]  |  mask: [N,H,W]
-                    # current (gives [N, T, H, W])
-                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc], axis=0) for p in pa]  # T * [N,H,W]
+                    rc_valid = [(x, y) for (x, y) in rc
+                                if all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in pa)]
 
-                    # time-first variant (gives [T, N, H, W]):
-                    image_data = np.stack(patches_per_t, axis=0)  # [T,N,H,W]
-
-                    mask_data = np.stack([mask_data[x, y] for (x, y) in rc], axis=0)
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in pa]  # T × [N,H,W]
+                    image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T, N, H, W)
+                    mask_data = np.stack([mask_data[x, y] for (x, y) in rc_valid], axis=0).astype(
+                        np.float32)  # (N, H, W)  # T * [N,H,W]
 
                 elif args.retrain_with_fpz:
                     fpz_path = join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy')
