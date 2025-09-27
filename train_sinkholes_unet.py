@@ -85,13 +85,17 @@ def train_model(
                 ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'or args.add_temporal))
         )
     ]
+    with open(args.intf_dict_path, 'r') as json_file:
+        coord_dict = json.load(json_file)
+    tmp_list = []
+    for intf in intf_list:
+        if coord_dict[intf]['nonz_num'] != 'none':
+            tmp_list.append(intf)
+    intf_list = tmp_list
 
+    n1 = len(intf_list)
+    logging.info('Original list has {} nonz'.format(n1))
     if args.train_with_nonz_th:
-        n1 = len(intf_list)
-        logging.info('Original list has {} nonz'.format(n1))
-
-        with open(args.intf_dict_path, 'r') as json_file:
-            coord_dict = json.load(json_file)
         nonz_th_north, nonz_th_south = tuple(args.nonz_th)[0], tuple(args.nonz_th)[1]
         filtered_list = []
         for intf in intf_list:
@@ -101,7 +105,6 @@ def train_model(
         intf_list = filtered_list
         n2 = len(intf_list)
         logging.info('filtered list has {} nonz'.format(n2))
-
         logging.info('filtered by nonz threshold: removed {} intfs'.format(n1-n2))
 
     if args.partition_mode == 'random_by_patch':
@@ -198,6 +201,11 @@ def train_model(
 
                 train_list = tv_list[:n_train]
                 val_list = tv_list[n_train:]
+
+
+        # train_list = ['20210611_20210622']
+        # val_list = ['20210611_20210622']
+        # test_list = ['20210611_20210622']
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
