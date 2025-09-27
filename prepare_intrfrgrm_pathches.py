@@ -9,14 +9,22 @@ import numpy as np
 import argparse
 from pathlib import Path
 import os
-from train_sinkholes_unet import str2bool
+import json
 
+from train_sinkholes_unet import str2bool
 from get_intf_info import *
 
 logging.basicConfig(level=logging.INFO)
-import json
 
 def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=True):
+    """
+    Returns:
+      data_patches         -> (Xi, Yi, H, W)
+      mask_patches         -> (Xi, Yi, H, W)
+      data_patches_nonz    -> (N, H, W)  (N could be 0)
+      mask_patches_nonz    -> (N, H, W)  (N could be 0)
+      nonz_indices         -> list[[i,j], ...] grid coords in (Xi, Yi)
+    """
     if mask_array is not None:
         assert input_array.shape == mask_array.shape, "Mask array should be the same shape as input array"
         mask_array = mask_array[:, 3000:8500]
@@ -45,7 +53,6 @@ def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=Tru
                 if nonz_pathces and mask_patch.any():
                     data_patches_nonz.append(data_patch)
                     mask_patches_nonz.append(mask_patch)
-                    # <<< NEW: save GRID coords, not pixel offsets >>>
                     nonz_indices.append([idx_i, idx_j])
 
             idx_j += 1
@@ -54,15 +61,26 @@ def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=Tru
             mask_patches.append(mask_row)
         idx_i += 1
 
+    data_patches = np.array(data_patches)
+    mask_patches = np.array(mask_patches) if mask_array is not None else None
+
+    # Ensure empty nonz arrays have consistent shape (0, H, W)
+    if len(data_patches_nonz) == 0:
+        data_patches_nonz = np.empty((0, H, W), dtype=input_array.dtype)
+        mask_patches_nonz = np.empty((0, H, W), dtype=np.uint8)
+    else:
+        data_patches_nonz = np.array(data_patches_nonz)
+        mask_patches_nonz = np.array(mask_patches_nonz)
+
     if mask_array is None:
-        return np.array(data_patches)
+        return data_patches
     else:
         return (
-            np.array(data_patches),
-            np.array(mask_patches),
-            np.array(data_patches_nonz),
-            np.array(mask_patches_nonz),
-            nonz_indices,  # grid coords in the saved [X,Y,H,W] arrays
+            data_patches,
+            mask_patches,
+            data_patches_nonz,
+            mask_patches_nonz,
+            nonz_indices,
         )
 
 def get_args():
@@ -76,15 +94,10 @@ def get_args():
     parser.add_argument('--strides_per_patch',type=int, default=2, help='strides per patch - 2 means half a window stride, 4 means quarter a window stride etc')
     parser.add_argument('--intf_22_23',  type=str, default='False')
     parser.add_argument('--align_frames',  action='store_true')
-
-
     parser.add_argument('--days_diff',  type=int, default=11)
-
     return parser.parse_args()
 
-
 if __name__ == '__main__':
-
     args = get_args()
     req_days_diff = args.days_diff
     args.intf_22_23 = str2bool(args.intf_22_23)
@@ -92,17 +105,27 @@ if __name__ == '__main__':
     gdf = gpd.read_file(args.gt_polygon_file_path)
     patch_size = tuple(args.patch_size)
     patch_H, patch_W = patch_size
-    data_output_dir = args.output_dir + 'data_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_'+str(req_days_diff)+'days') + ('_22_23' if args.intf_22_23 else '')+('_Aligned' if args.align_frames else '')
-    mask_output_dir = args.output_dir + 'mask_patches_H' + str(patch_H) + '_W' + str(patch_W) + '_strpp'+str(args.strides_per_patch) + ('_'+str(req_days_diff)+'days') +  ('_22_23' if args.intf_22_23 else '')+('_Aligned' if args.align_frames else '')
-
+    data_output_dir = (
+        args.output_dir
+        + f"data_patches_H{patch_H}_W{patch_W}_strpp{args.strides_per_patch}"
+        + (f"_{req_days_diff}days")
+        + ('_22_23' if args.intf_22_23 else '')
+        + ('_Aligned' if args.align_frames else '')
+    )
+    mask_output_dir = (
+        args.output_dir
+        + f"mask_patches_H{patch_H}_W{patch_W}_strpp{args.strides_per_patch}"
+        + (f"_{req_days_diff}days")
+        + ('_22_23' if args.intf_22_23 else '')
+        + ('_Aligned' if args.align_frames else '')
+    )
 
     for item in [data_output_dir, mask_output_dir]:
         if not os.path.exists(item):
-            # If it doesn't exist, create it
             os.makedirs(item)
         else:
-            logging.info('Note! These patches arleadt exist! If you want to recreate them - remove the existing dir first')
-            #sys.exit()
+            logging.info('Note! These patches already exist! If you want to recreate them - remove the existing dir first')
+
     if args.by_list is None:
         input_file_paths = list(Path(args.input_dir).glob('*.unw'))
     else:
@@ -110,15 +133,20 @@ if __name__ == '__main__':
         input_file_paths = []
         input_intfs = args.by_list.split(',')
         for filename in os.listdir(args.input_dir):
-            if filename.endswith('.unw') and any(input_intf[:8] ==  filename[9:17] and input_intf[9:]==filename[25:33]for input_intf in input_intfs):
+            if filename.endswith('.unw') and any(
+                input_intf[:8] == filename[9:17] and input_intf[9:] == filename[25:33]
+                for input_intf in input_intfs
+            ):
                 input_files.append(filename)
                 input_file_paths = [Path(args.input_dir) / file for file in input_files]
+
     nonzero_mask_inds_by_intf = {}
+
     for item in input_file_paths:
         gfile_name = item.name
-        intfrgrm_name = gfile_name.split('.')[0][9:17]+gfile_name.split('.')[0][24:33]
-        start_date = intfrgrm_name[0:4]+'-'+intfrgrm_name[4:6]+'-'+intfrgrm_name[6:8]
-        end_date = intfrgrm_name[9:13]+'-'+intfrgrm_name[13:15]+'-'+intfrgrm_name[15:17]
+        intfrgrm_name = gfile_name.split('.')[0][9:17] + gfile_name.split('.')[0][24:33]
+        start_date = f"{intfrgrm_name[0:4]}-{intfrgrm_name[4:6]}-{intfrgrm_name[6:8]}"
+        end_date   = f"{intfrgrm_name[9:13]}-{intfrgrm_name[13:15]}-{intfrgrm_name[15:17]}"
 
         start_datetime = datetime.strptime(start_date,"%Y-%m-%d")
         end_datetime = datetime.strptime(end_date,"%Y-%m-%d")
@@ -126,136 +154,125 @@ if __name__ == '__main__':
         if args.intf_22_23:
             if days_diff != req_days_diff or end_datetime.year < 2022:
                 continue
-        elif days_diff != req_days_diff or start_datetime.year >2021:
+        elif days_diff != req_days_diff or start_datetime.year > 2021:
             continue
 
-        intf_mdata=get_intf_coords(intfrgrm_name)
-        x0, y0, dx, dy,ncells, nlines,bo,frame = intf_mdata[0], intf_mdata[1], intf_mdata[2], intf_mdata[3], intf_mdata[4],intf_mdata[5], intf_mdata[10], intf_mdata[11]
+        intf_mdata = get_intf_coords(intfrgrm_name)
+        x0, y0, dx, dy = intf_mdata[0], intf_mdata[1], intf_mdata[2], intf_mdata[3]
+        ncells, nlines = intf_mdata[4], intf_mdata[5]
+        bo, frame      = intf_mdata[10], intf_mdata[11]
 
-        data = np.fromfile(args.input_dir+'/'+gfile_name, dtype=np.float32, count=-1, sep='', offset=0).reshape(nlines, ncells)
+        data = np.fromfile(os.path.join(args.input_dir, gfile_name), dtype=np.float32).reshape(nlines, ncells)
         if bo == 'MSBFirst':
             data = data.byteswap().newbyteorder('<')
 
+        # Build transform and CRS
+        transform = rasterio.transform.from_origin(x0, y0, dx, dy)
+        height, width = nlines, ncells
 
-        subset_polygs = gdf[(gdf['start_date']==start_date) & (gdf['end_date']==end_date)]
-        # if subset_polygs.empty:
-        #     logging.info('no GT polygons for interferogram: ' + intfrgrm_name)
-        #     continue
-        transform = rasterio.transform.from_origin(x0, y0, dx, dy)  # Adjust resolution and (North,West) origin to the interferogram
-        height, width = nlines,ncells  # Adjust dimension to match the interferogram
-        profile = {
-            'driver': 'GTiff',
-            'count': 1,
-            'height': height,
-            'width': width,
-            'dtype': 'uint8',
-            'crs': subset_polygs.crs,
-            'transform': transform
-        }
+        # Select polygons for this INTF
+        subset_polygs = gdf[(gdf['start_date'] == start_date) & (gdf['end_date'] == end_date)]
 
-        #Create the mask using rasterio's geometry_mask
-        mask = geometry_mask(subset_polygs.geometry, transform=transform, invert=True, out_shape=(height, width)).astype(np.uint8)
-        extent = [x0, x0 + dx * (ncells), y0 - dy * (nlines), y0]
+        # Make mask (handle empty polygons)
+        if subset_polygs.empty:
+            logging.warning(f"NO GT polygons for {intfrgrm_name} ({start_date}–{end_date}); using empty mask")
+            mask = np.zeros((height, width), dtype=np.uint8)
+        else:
+            mask = geometry_mask(
+                subset_polygs.geometry,
+                transform=transform,
+                invert=True,
+                out_shape=(height, width)
+            ).astype(np.uint8)
+
+        extent = [x0, x0 + dx * ncells, y0 - dy * nlines, y0]
         logging.info('initial long lat range: {}'.format(extent))
 
         if args.plot_data:
             plt.rcParams['backend'] = 'Qt5Agg'
-
             plt.imshow(data, extent=extent, cmap='Greys')
             plt.title('Interferogram '+ start_date + ' - ' + end_date)
             plt.xlabel('Longitude (deg)')
             plt.ylabel('Latitude (deg)')
             plt.show()
-            fig, ax = plt.subplots(1,2,figsize=(10,4), sharey=True, sharex=True,gridspec_kw={'width_ratios': [1, 1]})
 
-            subset_polygs.plot(ax=ax[0], edgecolor='blue', facecolor='none')
+            fig, ax = plt.subplots(1, 2, figsize=(10, 4), sharey=True, sharex=True, gridspec_kw={'width_ratios': [1, 1]})
+            if not subset_polygs.empty:
+                subset_polygs.plot(ax=ax[0], edgecolor='blue', facecolor='none')
             ax[0].set_title('subset polygons')
-            mask_imag = ax[1].imshow(mask,cmap='gray',extent=extent)
+            mask_im = ax[1].imshow(mask, cmap='gray', extent=extent)
             ax[1].set_title('subset polygons mask')
-            fig.colorbar(mask_imag, ax=ax[1], shrink=0.8)
+            fig.colorbar(mask_im, ax=ax[1], shrink=0.8)
             plt.show()
-            plt.rcParams['backend'] = 'Qt5Agg'
 
-            fig, ax = plt.subplots(1, 2, figsize=(10, 4), sharey=True, sharex=True,
-                                   gridspec_kw={'width_ratios': [1, 1]})
-
+            fig, ax = plt.subplots(1, 2, figsize=(10, 4), sharey=True, sharex=True, gridspec_kw={'width_ratios': [1, 1]})
             c0 = ax[0].imshow(data, extent=extent, cmap='gray')
-            ax[0].set_title(f'Interferogram'+intfrgrm_name, fontsize=12)
-            ax[0].set_xlabel(f'Longitude (deg)')
-            ax[0].set_ylabel(f'Latitude (deg)')
-
+            ax[0].set_title(f'Interferogram {intfrgrm_name}', fontsize=12)
+            ax[0].set_xlabel('Longitude (deg)')
+            ax[0].set_ylabel('Latitude (deg)')
             ax[1].imshow(mask, extent=extent, cmap='gray', vmin=0)
-            colorbar = fig.colorbar(c0, ax=ax[0], shrink=0.5)
-            colorbar.ax.tick_params(labelsize=7)
-
-            for i in range(len(subset_polygs)):
-                coords_e = subset_polygs.iloc[i]['geometry'].exterior.coords
-                coords_list = list(coords_e)
-                x, y = zip(*coords_list)
-                ax[0].plot(x, y)
-                ax[1].plot(x, y)
+            fig.colorbar(c0, ax=ax[0], shrink=0.5)
+            if not subset_polygs.empty:
+                for i in range(len(subset_polygs)):
+                    coords_e = subset_polygs.iloc[i]['geometry'].exterior.coords
+                    x, y = zip(*list(coords_e))
+                    ax[0].plot(x, y)
+                    ax[1].plot(x, y)
             plt.tight_layout()
             plt.show()
 
-        # Write the mask to a raster file
-        # with rasterio.open("subset_mask.tif", 'w', **profile) as dst:
-        #     dst.write(mask, 1)
-        # with rasterio.open("subset_mask.tif") as src:
-        #     # Read the mask data into a NumPy array
-        #     mask_array = src.read(1)
-
+        # Optional alignment
         if args.align_frames:
-            if frame=='North':
-                data,mask,_,_,_= crop_to_start_xy(data,mask,x0,y0,35.3,31.79)
+            if frame == 'North':
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.3, 31.79)
             else:
-                data,mask,_,_,_= crop_to_start_xy(data,mask,x0,y0,35.25,31.44)
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.25, 31.44)
 
-        data_patches,mask_patches,data_patches_nonz,mask_patches_nonz,nonz_indices = patchify(data, patch_size, stride= (patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch), mask_array=mask)
+        # Patchify (will yield empty nonz arrays if mask has no positives)
+        data_patches, mask_patches, data_patches_nonz, mask_patches_nonz, nonz_indices = patchify(
+            data,
+            patch_size,
+            stride=(patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch),
+            mask_array=mask
+        )
         nonzero_mask_inds_by_intf[intfrgrm_name] = nonz_indices
+
         counter_nonz = data_patches_nonz.shape[0]
-        logging.info('intrfrgrm {}: number of non-zero patches: '.format(intfrgrm_name)+str(counter_nonz))
+        logging.info(f'intrfrgrm {intfrgrm_name}: number of non-zero patches: {counter_nonz}')
 
-        ext =  intfrgrm_name +'_H'+str(patch_H)+'_W'+str(patch_W)+'_strpp'+str(args.strides_per_patch)+'.npy'
-        out_file_names = ['data_patches_','mask_patches_','data_patches_nonz_','mask_patches_nonz_']
-        for i,array in enumerate([data_patches,mask_patches,data_patches_nonz,mask_patches_nonz]):
-            if 'mask' in out_file_names[i]:
-                output_dir = mask_output_dir
-            else:
-                output_dir = data_output_dir
-            out_file_name = out_file_names[i] + ext
-            np.save(output_dir+'/'+ out_file_name,array)
+        # Save
+        ext = f"{intfrgrm_name}_H{patch_H}_W{patch_W}_strpp{args.strides_per_patch}.npy"
+        out_file_names = ['data_patches_', 'mask_patches_', 'data_patches_nonz_', 'mask_patches_nonz_']
+        arrays = [data_patches, mask_patches, data_patches_nonz, mask_patches_nonz]
 
+        for name, array in zip(out_file_names, arrays):
+            output_dir = mask_output_dir if 'mask' in name else data_output_dir
+            out_file_path = os.path.join(output_dir, name + ext)
+            np.save(out_file_path, array)
+            # sanity check
+            loaded = np.load(out_file_path, allow_pickle=False)
+            logging.info(f'shape of file saved: {name}{loaded.shape}')
 
-        #test
-            test_array = np.load(output_dir+'/'+ out_file_name)
-            logging.info('shpae of file saved: {}'.format(test_array.shape))
+        # Optional preview of non-zero patches only
+        if args.plot_data and counter_nonz > 0:
+            m_nz = np.load(os.path.join(mask_output_dir, 'mask_patches_nonz_' + ext))
+            d_nz = np.load(os.path.join(data_output_dir, 'data_patches_nonz_' + ext))
+            for i in range(0, max(0, len(d_nz)-8), 8):
+                fig, axes = plt.subplots(4, 4, figsize=(10, 10), sharex=True, sharey=True)
+                axes = axes.flatten()
+                full = []
+                for j in range(8):
+                    axes[2*j].imshow(d_nz[i+j], cmap='gray')
+                    axes[2*j+1].imshow(m_nz[i+j], cmap='gray')
+                    axes[2*j].set_title(f'Patch {i+j}', fontsize=7)
+                    full.append(m_nz[i+j])
+                full = np.array(full)
+                if np.any(full > 0):
+                    plt.show()
+                else:
+                    plt.close()
 
-
-        if args.plot_data:
-            mask_patches = np.load(mask_output_dir + '/' + 'mask_patches_nonz_' + ext)
-            data_patches = np.load(data_output_dir + '/' + 'data_patches_nonz_' + ext)
-            for i in range(0,len(data_patches)-8,8):
-               fig, axes = plt.subplots(4, 4, figsize=(10, 10),sharex=True, sharey=True)
-               axes = axes.flatten()
-               full = []
-               for j in range(8):
-                    axes[2*j].imshow(data_patches[i+j],cmap='gray')
-                    axes[2*j+1].imshow(mask_patches[i+j],cmap='gray')
-                    axes[2*j+1].set_xlim(axes[2*j].get_xlim())
-                    axes[2*j+1].set_ylim(axes[2*j].get_ylim())
-                    axes[2*j].tick_params(axis='x', labelsize=7)
-                    axes[2*j].tick_params(axis='y', labelsize=7)
-                    axes[2 * j+1].tick_params(axis='x', labelsize=7)
-                    axes[2 * j+1].tick_params(axis='y', labelsize=7)
-                    axes[2*j].set_title('Patch {}'.format(i+j),fontsize=7)
-                    full.append(mask_patches[i+j])
-               full = np.array(full)
-               if np.any(full>0):
-                  plt.show()
-               else:
-                 plt.close()###
-    import os
-
+    # Write non-zero indices JSON (pretty-chunked lines)
     items_per_line = 50
     out_path = os.path.join(data_output_dir, "nonz_indices.json")
 
@@ -264,28 +281,21 @@ if __name__ == '__main__':
         keys = list(nonzero_mask_inds_by_intf.keys())
         for ki, intf_id in enumerate(keys):
             pairs = nonzero_mask_inds_by_intf[intf_id]
-            # ensure plain Python ints
             pairs = [(int(i), int(j)) for (i, j) in pairs]
-
             f.write(f'  "{intf_id}": [\n')
             n = len(pairs)
-
             if n == 0:
                 f.write("  ]")
             else:
                 for i, (pi, pj) in enumerate(pairs):
-                    # start a new logical line every items_per_line
                     if i % items_per_line == 0:
                         f.write("    ")
                     f.write(f"[{pi},{pj}]")
                     if i != n - 1:
                         f.write(", ")
-                    # newline after each chunk of items_per_line, except after the very last element
                     if (i % items_per_line == items_per_line - 1) and (i != n - 1):
                         f.write("\n")
                 f.write("\n  ]")
-
-            # comma between interferograms
             if ki != len(keys) - 1:
                 f.write(",\n")
             else:
