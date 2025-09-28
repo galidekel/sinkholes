@@ -174,7 +174,6 @@ def train_model(
             train_list = tv_list[:n_train]
             val_list = tv_list[n_train:]
 
-
         else:
             if test_list is None:
                 random.shuffle(unique_intf_list)
@@ -201,7 +200,20 @@ def train_model(
 
                 train_list = tv_list[:n_train]
                 val_list = tv_list[n_train:]
+            preset_test_val_21 = True
+            if preset_test_val_21:
+                test_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
+                val_list = ['20210120_20210131','20210222_20210305','20210119_20210130','20210210_20210221']
+                train_list = list(set(unique_intf_list) - set(test_list)-set(val_list))
+                tmp_train_list = []
+                for intf in train_list:
+                    if intf[:4] != '2021':
+                        tmp_train_list.append(intf)
+                train_list = tmp_train_list
 
+                logging.info(f' test interferograms: {test_list}')
+                logging.info(f'val interferograms: {val_list}')
+                logging.info(f'train interferograms: {train_list}')
 
         # train_list = ['20210611_20210622']
         # val_list = ['20210611_20210622']
