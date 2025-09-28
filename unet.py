@@ -107,6 +107,11 @@ class SelfAttention2D(nn.Module):
 class UNet(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=False,add_attn = False):
         super(UNet, self).__init__()
+        self.input_mix = nn.Sequential(
+            nn.Conv2d(self.n_channels, self.n_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(self.n_channels),
+            nn.ReLU(inplace=True),
+        )
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
@@ -129,6 +134,8 @@ class UNet(nn.Module):
             self.attn = ChannelSelfAttention(in_channels=1024)
 
     def forward(self, x):
+        x = self.input_mix(x)  # <<— lets the net learn how to use history
+        x1 = self.inc(x)
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
