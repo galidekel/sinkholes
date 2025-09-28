@@ -215,9 +215,10 @@ def train_model(
                 logging.info(f'val interferograms: {val_list}')
                 logging.info(f'train interferograms: {train_list}')
 
-        # train_list = ['20210611_20210622']
-        # val_list = ['20210611_20210622']
-        # test_list = ['20210611_20210622']
+        if os.environ.get('LOCAL_ENVIRONMENT', False):
+            train_list = ['20210611_20210622']
+            val_list = ['20210611_20210622']
+            test_list = ['20210611_20210622']
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
@@ -475,7 +476,7 @@ if __name__ == '__main__':
     #device = get_default_device()
     logging.info(f'Using device {device}')
     if args.add_temporal:
-        num_c = 3
+        num_c = args.k_prevs
     else:
         num_c=1
 
