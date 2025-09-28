@@ -304,6 +304,13 @@ class SubsiDataset(Dataset):
         # Preprocess
         img = self.preprocess(self.mask_values, img, 0)  # keeps shape; (T,H,W) or (H,W)
         msk = self.preprocess(self.mask_values, msk, 1)  # -> (H,W) labels
+        T = img.shape[0];
+        # fig, ax = plt.subplots(1, T + 1, figsize=(2 * (T + 1), 2))
+        # for i in range(T): ax[i].imshow(img[i], cmap='gray'); ax[i].axis('off')
+        # ax[-1].imshow(msk, cmap='Reds');
+        # ax[-1].axis('off');
+        # plt.tight_layout();
+        # plt.show()
 
         # Augment (Albumentations expects channels-last)
         if self.do_augmentations:
