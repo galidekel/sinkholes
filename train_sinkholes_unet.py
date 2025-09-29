@@ -216,9 +216,6 @@ def train_model(
                 logging.info(f'train interferograms: {train_list}')
 
 
-        # train_list = ['20210611_20210622']
-        # val_list = ['20210611_20210622']
-        # test_list = ['20210611_20210622']
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
@@ -314,7 +311,7 @@ def train_model(
                               lr=learning_rate, weight_decay=weight_decay, momentum=momentum, foreach=True)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5)  # goal: maximize Dice score
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
-    criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss(pos_weight=torch.tensor([4.0], device=device))
+    criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss(pos_weight=torch.tensor([8.0], device=device))
     global_step = 0
 
     #Begin training
