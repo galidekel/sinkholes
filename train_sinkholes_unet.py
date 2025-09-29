@@ -202,8 +202,8 @@ def train_model(
                 val_list = tv_list[n_train:]
             preset_test_val_21 = True
             if preset_test_val_21:
-                test_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
-                val_list = ['20210120_20210131','20210222_20210305','20210119_20210130','20210210_20210221']
+                val_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
+                test_list = ['20210120_20210131','20210222_20210305','20210119_20210130','20210210_20210221']
                 train_list = list(set(unique_intf_list) - set(test_list)-set(val_list))
                 tmp_train_list = []
                 for intf in train_list:
