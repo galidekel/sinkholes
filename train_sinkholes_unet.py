@@ -61,7 +61,7 @@ def train_model(
     image_dir = args.patches_dir + 'data_patches_H' + str(H) + '_W' + str(W) +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
     mask_dir = args.patches_dir + 'mask_patches_H' + str(H) + '_W' + str(W)  +'_strpp'+str(args.stride) + ('_11days' if args.train_on_11d_diff else '_all')
     #
-    if args.add_temporal:
+    if args.add_temporal or True:
         image_dir += '_Aligned'
         mask_dir += '_Aligned'
 
@@ -147,7 +147,7 @@ def train_model(
         logging.info('Creating Dataset: Randomly partitioning by Interferograms !!!')
         unique_intf_list = intf_list
         prev_dict=None
-        if args.add_temporal:
+        if args.add_temporal or True:
             with open(args.intf_dict_path, "r") as f:
                 intf_info = json.load(f)
             prev_dict,updated_intf_list = find_11day_sequences(intf_info,k_prev=args.k_prevs, restrict_to=unique_intf_list)
