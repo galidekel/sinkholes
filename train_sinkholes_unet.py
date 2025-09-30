@@ -80,7 +80,7 @@ def train_model(
     intf_list = [
         file.split('.')[0][start_intf_name:start_intf_name + 17]
         for file in os.listdir(image_dir)
-        if os.path.isfile(os.path.join(image_dir, file)) and (
+        if os.path.isfile(os.path.join(image_dir, file)) and '.json' not in file and (
                 ('nonz' in file and args.nonz_only and args.partition_mode != 'spatial'and not args.add_temporal) or
                 ('nonz' not in file and (not args.nonz_only or args.partition_mode == 'spatial'or args.add_temporal))
         )
