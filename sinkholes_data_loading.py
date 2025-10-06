@@ -20,7 +20,6 @@ import albumentations as A
 import matplotlib.pyplot as plt
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-
 def load_image(filename):
     ext = splitext(filename)[1]
     if ext == '.npy':
@@ -278,15 +277,21 @@ class SubsiDataset(Dataset):
 
             return mask
 
-        else:
-            # if img.ndim == 2:
-            #     img = img[np.newaxis, ...]
-            # else:
-            #     img = img.transpose((2, 0, 1))
-            img = (img +np.pi) / (2*np.pi)
 
+        out = img.copy()
+        tol = 1e-1
+        for c in range(out.shape[0]):
+            mn = float(np.nanmin(out[c]));
+            mx = float(np.nanmax(out[c]))
+            if (mn < -tol) or (mx > 1.0 + tol):
+                out[c] = (out[c] + np.pi) / (2 * np.pi)
+            else:
+                zmask = (out[c] == 0.0)  # only exact zeros
+                if zmask.any():
+                    out[c][zmask] = 0.5
+        return out
 
-            return img
+        return img
 
     def __getitem__(self, sample):
         intf_idx, patch_idx = self.index_map[sample]

@@ -104,9 +104,40 @@ class SelfAttention2D(nn.Module):
 
         out = torch.bmm(V, attn.permute(0, 2, 1)).view(B, C, H, W)
         return self.gamma * out + x
+
+class HistoryGate(nn.Module):
+    def __init__(self, eps: float = 0.1):
+        super().__init__()
+        self.eps = eps
+        self.gate_head = nn.Sequential(
+            nn.Conv2d(1, 16, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(16, 1, 1),
+            nn.Sigmoid(),
+        )
+        # start conservative: small gate -> rely on current channel mostly
+        with torch.no_grad():
+            for m in self.gate_head.modules():
+                if isinstance(m, nn.Conv2d) and m.bias is not None:
+                    nn.init.constant_(m.bias, -2.0)  # sigmoid(-2)≈0.12
+
+    def forward(self, x):            # x: (B, 1+k_prevs, H, W)
+        if x.size(1) == 1:
+            return x                 # no prevs
+        cur  = x[:, :1]
+        prev = x[:, 1:]
+        g = self.gate_head(cur)                      # (B,1,H,W) in [0,1]
+        g = self.eps + (1.0 - self.eps) * g         # floor so prevs never vanish
+        prev = prev * g
+        return torch.cat([cur, prev], dim=1)
+
+
 class UNet(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=False,add_attn = False):
         super(UNet, self).__init__()
+
+        self.history_gate = HistoryGate(eps=0.1)
+
         self.input_mix = nn.Sequential(
             nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False),
             nn.BatchNorm2d(n_channels),
@@ -134,8 +165,8 @@ class UNet(nn.Module):
             self.attn = ChannelSelfAttention(in_channels=1024)
 
     def forward(self, x):
+        x = self.history_gate(x)
         x = self.input_mix(x)  # <<— lets the net learn how to use history
-        x1 = self.inc(x)
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
