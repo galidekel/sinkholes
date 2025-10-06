@@ -136,7 +136,7 @@ class UNet(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=False,add_attn = False):
         super(UNet, self).__init__()
 
-        self.history_gate = HistoryGate(eps=0.1)
+        # self.history_gate = HistoryGate(eps=0.1)
 
         self.input_mix = nn.Sequential(
             nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False),
@@ -165,8 +165,8 @@ class UNet(nn.Module):
             self.attn = ChannelSelfAttention(in_channels=1024)
 
     def forward(self, x):
-        x = self.history_gate(x)
-        x = self.input_mix(x)  # <<— lets the net learn how to use history
+        # x = self.history_gate(x)
+        # x = self.input_mix(x)  # <<— lets the net learn how to use history
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)

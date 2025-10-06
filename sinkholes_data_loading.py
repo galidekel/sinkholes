@@ -115,23 +115,37 @@ class SubsiDataset(Dataset):
                 image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + suff+'.npy'))
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +mask_suff+'.npy'))
                 if self.temporal:
-                    rc = nonz_pathces_dict[id]  # [(x,y), ...]
-                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present
+                    rc = nonz_pathces_dict[id]  # [(x,y), ...] from current
+                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present (T = k_prev+1)
 
-                    # load patches for all timesteps (current in-memory, prevs from disk)
-                    pa = [image_data if tid == id else np.load(join(
-                        self.image_dir,
-                        pref + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy"
-                    ))
-                          for tid in tids]  # each (X,Y,H,W)
+                    def img_path(tid):
+                        return join(self.image_dir,
+                                    pref + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
 
-                    rc_valid = [(x, y) for (x, y) in rc
-                                if all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in pa)]
+                    def msk_path(tid):
+                        return join(self.mask_dir, pref.replace("data_",
+                                                                "mask_") + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
 
-                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in pa]  # T × [N,H,W]
-                    image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T, N, H, W)
-                    mask_data = np.stack([mask_data[x, y] for (x, y) in rc_valid], axis=0).astype(
-                        np.float32)  # (N, H, W)  # T * [N,H,W]
+                    # load per-time images (current already in memory as image_data; same for mask_data if you have it)
+                    img_pa = [image_data if tid == id else np.load(img_path(tid)).astype(np.float32) for tid in
+                              tids]  # each (X,Y,H,W)
+                    msk_pa = [mask_data if tid == id else np.load(msk_path(tid)).astype(np.float32) for tid in
+                              tids]  # each (X,Y,H,W)
+
+                    # keep only patch coords valid for **all** times
+                    rc_valid = [(x, y) for (x, y) in rc if
+                                all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
+
+                    # stack images per time: list[(N,H,W)] → (T,N,H,W)
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in
+                                     img_pa]  # list of (N,H,W)
+                    image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
+
+                    # stack masks per time, then union over time: (T,N,H,W) → (N,H,W)
+                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in
+                                   msk_pa]  # list of (N,H,W)
+                    masks_TNHW = np.stack(masks_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
+                    mask_data = (masks_TNHW > 0).any(axis=0).astype(np.float32)
 
                 elif args.retrain_with_fpz:
                     fpz_path = join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy')
