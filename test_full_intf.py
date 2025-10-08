@@ -109,7 +109,7 @@ def reconstruct_intf_prediction(data, intf_coords, net, patch_size, stride, rth,
     if mask is None:
         return reconstructed_intf, reconstructed_pred, reconstructed_prevs
     else:
-        return reconstructed_intf, reconstructed_mask, reconstructed_pred_th, reconstructed_pred, reconstructed_prevs
+        return reconstructed_intf_all, reconstructed_mask, reconstructed_pred_th, reconstructed_pred, reconstructed_prevs
 
 
 def get_pred_args():
@@ -223,10 +223,11 @@ if __name__ == '__main__':
 
     for intf in intf_list:
         ic = get_intf_coords(intf)
-        if ic[11] == 'North':
-            intfs_coords = (35.3, 31.79) + ic[2:]
-        else:
-            intfs_coords = (35.25, 31.44) + ic[2:]
+        if args.k_prevs > 0:
+            if ic[11] == 'North':
+                intfs_coords = (35.3, 31.79) + ic[2:]
+            else:
+                intfs_coords = (35.25, 31.44) + ic[2:]
 
         data_file_name = f'data_patches_{intf}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'
         mask_file_name = f'mask_patches_{intf}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'
