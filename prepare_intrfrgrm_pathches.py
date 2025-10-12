@@ -224,9 +224,9 @@ if __name__ == '__main__':
         # Optional alignment
         if args.align_frames:
             if frame == 'North':
-                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.6, 31.79)
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.36, 31.79)
             else:
-                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.6, 31.44)
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.36, 31.44)
 
         # Patchify (will yield empty nonz arrays if mask has no positives)
         data_patches, mask_patches, data_patches_nonz, mask_patches_nonz, nonz_indices = patchify(
