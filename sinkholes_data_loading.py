@@ -17,6 +17,10 @@ from tqdm import tqdm
 import json
 import math
 import albumentations as A
+import geopandas as gpd
+import geopandas as gpd
+from rasterio.features import rasterize
+from rasterio.transform import from_origin
 import matplotlib.pyplot as plt
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -80,6 +84,12 @@ class SubsiDataset(Dataset):
             with open(image_dir+'/'+'nonz_indices.json',"r") as f:
                 nonz_pathces_dict = json.load(f)
                 self.seq_dict  = seq_dict
+            with open('intf_coord.json') as f:
+                intf_coord = json.load(f)
+            lidar_gdf = gpd.read_file('lidar_mask_polygs.shp')
+            self.intf_coord = intf_coord
+            self.lidar_gdf = lidar_gdf
+
         else:
             self.temporal = False
         if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train and not args.nonoverlap_tr_tst and not self.temporal:
@@ -115,48 +125,98 @@ class SubsiDataset(Dataset):
                 image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + suff+'.npy'))
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +mask_suff+'.npy'))
                 if self.temporal:
-                    rc = nonz_pathces_dict[id]  # [(x,y), ...] from current
-                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present (T = k_prev+1)
+                    rc = nonz_pathces_dict[id]  # list[(x,y)] from current
+                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs … present (T = k_prev+1)
 
                     def img_path(tid):
                         return join(self.image_dir,
                                     pref + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
 
                     def msk_path(tid):
-                        return join(self.mask_dir, pref.replace("data_",
-                                                                "mask_") + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
+                        return join(self.mask_dir,
+                                    pref.replace("data_", "mask_") + tid +
+                                    f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
 
-                    # load per-time images (current already in memory as image_data; same for mask_data if you have it)
+                    # load per-time arrays (current already in memory)
                     img_pa = [image_data if tid == id else np.load(img_path(tid)).astype(np.float32) for tid in
-                              tids]  # each (X,Y,H,W)
+                              tids]  # (Xi,Yi,H,W)
                     msk_pa = [mask_data if tid == id else np.load(msk_path(tid)).astype(np.float32) for tid in
-                              tids]  # each (X,Y,H,W)
+                              tids]  # (Xi,Yi,H,W)
 
-                    # keep only patch coords valid for **all** times
-                    rc_valid = [(x, y) for (x, y) in rc if
-                                all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
+                    # keep only coordinates valid for *all* times (by patch grid bounds)
+                    rc_valid = [(x, y) for (x, y) in rc
+                                if all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
 
-                    # stack images per time: list[(N,H,W)] → (T,N,H,W)
-                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in
+                    # --- LiDAR check for ALL times: require patch window fully inside LiDAR raster ---
+                    Sy = args.patch_size[0] // args.stride  # pixel stride (rows)
+                    Sx = args.patch_size[1] // args.stride  # pixel stride (cols)
+                    H, W = args.patch_size
+
+                    # cache rasters per (tid, ny, nx) to avoid re-rasterizing in the loop
+                    _lidar_cache = {}
+
+                    def lidar_raster_for(tid, ny, nx):
+                        key = (tid, ny, nx)
+                        if key in _lidar_cache:
+                            return _lidar_cache[key]
+
+                        # choose origin by frame to match your aligned patch generation
+                        frame = self.intf_coord[tid]['frame']
+                        X0_t, Y0_t = (35.36, 31.79) if frame == 'North' else (35.36, 31.44)
+                        dx_t = self.intf_coord[tid]['dx']
+                        dy_t = self.intf_coord[tid]['dy']
+
+                        # reconstruct canvas size used by reconstruction: out = ny*stride + H
+                        out_h = ny * Sy + H
+                        out_w = nx * Sx + W
+
+                        # select LiDAR polygons for this tid’s source
+                        src = self.intf_coord[tid]['lidar_mask']
+                        poly_df = self.lidar_gdf if (src is None or (isinstance(src, str) and len(src) == 0)) \
+                            else self.lidar_gdf[self.lidar_gdf['source'] == src]
+
+                        if poly_df is None or len(poly_df) == 0:
+                            # No polygons -> consider everything inside (or flip to all-zero if you prefer strict behavior)
+                            ras = np.ones((out_h, out_w), dtype=np.uint8)
+                        else:
+                            ras = rasterize(
+                                [(g, 1) for g in poly_df['geometry'].tolist()],
+                                out_shape=(out_h, out_w),
+                                transform=from_origin(X0_t, Y0_t, dx_t, dy_t),
+                                fill=0,
+                                all_touched=True,
+                                dtype=np.uint8
+                            )
+                        _lidar_cache[key] = ras
+                        return ras
+
+                    rc_valid_lidar = []
+                    for (x, y) in rc_valid:
+                        y0_pix, y1_pix = x * Sy, x * Sy + H
+                        x0_pix, x1_pix = y * Sx, y * Sx + W
+                        ok = True
+                        for tid, p in zip(tids, img_pa):
+                            ny_t, nx_t = p.shape[0], p.shape[1]
+                            ras = lidar_raster_for(tid, ny_t, nx_t)
+                            # require FULL coverage of the patch by LiDAR (use np.all; change to .any if partial allowed)
+                            if not np.all(ras[y0_pix:y1_pix, x0_pix:x1_pix]):
+                                ok = False
+                                break
+                        if ok:
+                            rc_valid_lidar.append((x, y))
+
+                    # proceed with *only* the LiDAR-filtered coordinates
+                    rc_use = rc_valid_lidar
+
+                    # build (T, N, H, W) image stack and unioned mask (N, H, W)
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in
                                      img_pa]  # list of (N,H,W)
                     image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
 
-                    # stack masks per time, then union over time: (T,N,H,W) → (N,H,W)
-                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in
-                                   msk_pa]  # list of (N,H,W)
-                    masks_TNHW = np.stack(masks_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
-                    mask_data = (masks_TNHW > 0).any(axis=0).astype(np.float32)
+                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # list of (N,H,W)
+                    mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
 
-                elif args.retrain_with_fpz:
-                    fpz_path = join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy')
-                    if os.path.isfile(fpz_path):
 
-                        fpz_data = np.load(join(self.image_dir,'additional_fp_patches/' + 'data_patches_fp_' +id + '.npy'))
-                        z_mask_data = np.zeros(fpz_data.shape)
-                        image_data = np.concatenate((image_data,fpz_data),axis=0)
-                        mask_data = np.concatenate((mask_data,z_mask_data),axis=0)
-                    else:
-                        logging.info('Note! No fpz patches for intf {}'.format(id))
                 elif args.nonoverlap_tr_tst :
                     if dset == 'train':
                         nz_patches,nz_masks,nz_indices = [],[],[]
@@ -214,10 +274,7 @@ class SubsiDataset(Dataset):
                         print('from {} patches'.format(image_data.shape[0]))
                         image_data= np.array(image_patches)
                         mask_data= np.array(mask_patches)
-
-
             else:
-
                 stride = math.floor(args.patch_size[0]/2) *coord_dict[id]["dy"]
 
                 thresh_line = math.floor((coord_dict[id]["north"] - args.thresh_lat) / stride)
@@ -258,7 +315,6 @@ class SubsiDataset(Dataset):
             ))
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
         logging.info(f'Unique mask values: {self.mask_values}')
-
 
         self.do_augmentations = (args.augment and dset == 'train')
         if self.do_augmentations:
