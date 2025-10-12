@@ -27,9 +27,9 @@ def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=Tru
     """
     if mask_array is not None:
         assert input_array.shape == mask_array.shape, "Mask array should be the same shape as input array"
-        mask_array = mask_array[:, 3000:8500]
+        mask_array = mask_array[:, :4000]
 
-    input_array = input_array[:, 3000:8500]
+    input_array = input_array[:, :4000]
     rows, cols = input_array.shape
     H, W = window_size
     Sy, Sx = stride
@@ -224,9 +224,9 @@ if __name__ == '__main__':
         # Optional alignment
         if args.align_frames:
             if frame == 'North':
-                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.3, 31.79)
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.6, 31.79)
             else:
-                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.25, 31.44)
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.6, 31.44)
 
         # Patchify (will yield empty nonz arrays if mask has no positives)
         data_patches, mask_patches, data_patches_nonz, mask_patches_nonz, nonz_indices = patchify(
