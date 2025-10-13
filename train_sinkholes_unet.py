@@ -203,6 +203,8 @@ def train_model(
             preset_test_val_21 = True
             if preset_test_val_21:
                 val_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
+                val_list = ['20210806_20210817','20210623_20210704','20210622_20210703','20210714_20210725']
+
                 test_list = ['20210120_20210131','20210222_20210305','20210119_20210130','20210210_20210221']
                 train_list = list(set(unique_intf_list) - set(test_list)-set(val_list))
                 tmp_train_list = []
@@ -214,8 +216,10 @@ def train_model(
                 logging.info(f' test interferograms: {test_list}')
                 logging.info(f'val interferograms: {val_list}')
                 logging.info(f'train interferograms: {train_list}')
-
-
+        #
+        # train_list = ['20191129_20191210']
+        # test_list = ['20191129_20191210']
+        # val_list = ['20191129_20191210']
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
