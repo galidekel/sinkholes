@@ -249,7 +249,7 @@ if __name__ == '__main__':
     # model
     net = UNet(n_channels=args.k_prevs + 1, n_classes=1, bilinear=False)
     if args.attn_unet:
-        net = AttentionUNet(n_channels=1, n_classes=1, bilinear=False)
+        net = AttentionUNet(n_channels=args.k_prevs + 1, n_classes=1, bilinear=False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Loading model {args.model} on device {device}')
