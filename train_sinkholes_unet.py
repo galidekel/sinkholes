@@ -30,6 +30,54 @@ from dice_score import dice_loss
 from datetime import datetime
 import pickle
 from attn_unet import *
+import torch.nn.functional as F
+
+EPS = 1e-6
+
+def masked_bce_with_logits(logits, y_float, V, pos_w: float = 1.0):
+    """
+    logits:  (B,1,H,W)
+    y_float: (B,1,H,W) in {0,1}
+    V:       (B,1,H,W) validity mask in {0,1}
+    pos_w:   >1.0 increases loss on positive pixels
+    """
+    pw = torch.as_tensor([pos_w], device=logits.device, dtype=logits.dtype)  # per-class (C=1)
+    per_pix = F.binary_cross_entropy_with_logits(
+        logits, y_float, reduction='none', pos_weight=pw
+    )
+    w = V.detach()
+    return (per_pix * w).sum() / w.sum().clamp(min=1.0)
+
+def masked_dice_loss_binary(logits, y_float, V):
+    """
+    Soft Dice on probs with validity mask.
+    """
+    p = torch.sigmoid(logits)                      # (B,1,H,W)
+    num = (2.0 * (p * y_float * V)).sum()
+    den = ((p * V).sum() + (y_float * V).sum() + EPS)
+    return 1.0 - (num / den)
+
+def masked_ce_plus_softdice_multiclass(logits, y_long, V):
+    """
+    CrossEntropy (masked) + mean soft Dice over classes (masked).
+    logits: (B,C,H,W), y_long: (B,H,W), V: (B,1,H,W)
+    """
+    # CE (per-pixel) then mask
+    ce_per_pix = F.cross_entropy(logits, y_long, reduction='none')   # (B,H,W)
+    ce = (ce_per_pix * V.squeeze(1)).sum() / (V.sum().clamp(min=1.0))
+
+    # Soft Dice over classes
+    probs = F.softmax(logits, dim=1)                      # (B,C,H,W)
+    y1 = F.one_hot(y_long, num_classes=logits.shape[1]).permute(0,3,1,2).float()  # (B,C,H,W)
+
+    probs = probs * V                                     # mask both
+    y1    = y1 * V
+
+    num = (2.0 * (probs * y1)).sum(dim=(0,2,3))           # per-class
+    den = (probs.sum(dim=(0,2,3)) + y1.sum(dim=(0,2,3)) + EPS)
+    dice = 1.0 - (num / den).mean()                       # mean over classes
+
+    return ce + dice
 
 def str2bool(arg):
     if arg.lower() == 'true':
@@ -203,9 +251,9 @@ def train_model(
             preset_test_val_21 = True
             if preset_test_val_21:
                 val_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
-                val_list = ['20210806_20210817','20210623_20210704','20210622_20210703','20210714_20210725']
+                test_list = ['20210806_20210817','20210623_20210704','20210622_20210703','20210714_20210725']
 
-                test_list = ['20210120_20210131','20210222_20210305','20210119_20210130','20210210_20210221']
+
                 train_list = list(set(unique_intf_list) - set(test_list)-set(val_list))
                 tmp_train_list = []
                 for intf in train_list:
@@ -217,9 +265,9 @@ def train_model(
                 logging.info(f'val interferograms: {val_list}')
                 logging.info(f'train interferograms: {train_list}')
         #
-        # train_list = ['20191129_20191210']
-        # test_list = ['20191129_20191210']
-        # val_list = ['20191129_20191210']
+        train_list = ['20191129_20191210']
+        test_list = ['20191129_20191210']
+        val_list = ['20191129_20191210']
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
@@ -270,11 +318,7 @@ def train_model(
         # val_set = Subset(valtmp_set, val_indices)
         # test_set = Subset(valtmp_set, test_indices)
 
-
-
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)) )
-
-
         logging.info('Spatial partitioning: Val percent is ' + str(int(100*n_val/(n_train+n_val+n_test))) + '%')
         logging.info('Spatial partitioning: test percent is ' + str(int(100*n_test/(n_train+n_val+n_test))) + '%')
         with open(outpath+'test_dataset_'+args.job_name+'.pkl', 'wb') as f:
@@ -325,39 +369,48 @@ def train_model(
         with (tqdm(total=n_train, desc=f'Epoch {epoch}/{epochs}', unit='img') as pbar):
             for batch in train_loader:
                 images, true_masks = batch['image'], batch['mask']
-
+                # images: (B, 2T, H, W) if args.treat_nodata_regions else (B, T, H, W)
                 assert images.shape[1] == model.n_channels, \
-                    f'Network has been defined with {model.n_channels} input channels, ' \
-                    f'but loaded images have {images.shape[1]} channels. Please check that ' \
-                    'the images are loaded correctly.'
+                    f'Network has {model.n_channels} input channels, but loaded images have {images.shape[1]}.'
 
                 images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
                 true_masks = true_masks.to(device=device, dtype=torch.long)
 
+                # Split data and per-time validity when enabled
+                if args.treat_nodata_regions:
+                    T = images.shape[1] // 2
+                    # x = images[:, :T, ...]     # not needed explicitly here
+                    V = images[:, T:, ...]  # (B, T, H, W), 1=valid, 0=nodata
+                    V_any = V.max(dim=1, keepdim=True).values  # (B, 1, H, W)
+                else:
+                    V_any = None  # not used
+
                 with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
-                    masks_pred = model(images)
+                    logits = model(images)  # (B,1,H,W) for binary; (B,C,H,W) for multiclass
 
-                    if is_running_locally and False:
-                        images_np =  images.detach().numpy()
-                        masks_pred_np = masks_pred.detach().numpy()
-                        true_masks_np = true_masks.detach().numpy()
-                        true_masks_np = np.expand_dims(true_masks_np,axis = 1)
-                        fig, (ax1,ax2,ax3) = plt.subplots(1,3)
-                        ax1.imshow(images_np[0,0,:,:])
-                        ax2.imshow(masks_pred_np[0,0,:,:])
-                        ax3.imshow(true_masks_np[0,0,:,:])
-                        plt.show()
+                if model.n_classes == 1:
+                    # Binary segmentation
+                    y_float = true_masks.float().unsqueeze(1)  # (B,1,H,W)
 
-                    if model.n_classes == 1:
-                        loss = criterion(masks_pred.squeeze(1), true_masks.float())
-                        loss += dice_loss(F.sigmoid(masks_pred.squeeze(1)), true_masks.float(), multiclass=False)
+                    if args.treat_nodata_regions:
+                        # Masked BCE + masked Dice using V_any
+                        loss_bce = masked_bce_with_logits(logits, y_float, V_any,pos_w=8)
+                        loss_dice = masked_dice_loss_binary(logits, y_float, V_any)
+                        # Optional tiny regularizer: discourage positives where ALL slices are nodata
+                        no_data = (1.0 - V_any)
+                        loss = loss_bce + loss_dice + 1e-3 * (torch.sigmoid(logits) * no_data).mean()
                     else:
-                        loss = criterion(masks_pred, true_masks)
-                        loss += dice_loss(
-                            F.softmax(masks_pred, dim=1).float(),
-                            F.one_hot(true_masks, model.n_classes).permute(0, 3, 1, 2).float(),
-                            multiclass=True
-                        )
+                        # Unmasked baseline losses
+                        loss = criterion(logits.squeeze(1), y_float.squeeze(1))
+                        loss += dice_loss(torch.sigmoid(logits.squeeze(1)), y_float.squeeze(1), multiclass=False)
+
+                else:
+                    # Multiclass segmentation
+                    if args.treat_nodata_regions:
+                        # Expect masked CE + Soft Dice to broadcast V_any (B,1,H,W) across classes
+                        loss = masked_ce_plus_softdice_multiclass(logits, true_masks, V_any)
+                    else:
+                        loss = criterion(logits, true_masks)
 
                 optimizer.zero_grad(set_to_none=True)
                 grad_scaler.scale(loss).backward()
@@ -429,6 +482,9 @@ def get_args():
     parser.add_argument('--augment', action='store_true',help='augment: only for spatial')
     parser.add_argument('--add_temporal', action='store_true')
     parser.add_argument('--k_prevs',type=int, default=2)
+    parser.add_argument('--treat_nodata_regions', action='store_true')
+
+
 
 
     return parser.parse_args()
@@ -464,14 +520,9 @@ if __name__ == '__main__':
     args.nonoverlap_tr_tst = str2bool(args.nonoverlap_tr_tst)
     args.retrain_with_fpz = str2bool(args.retrain_with_fpz)
 
-
-
     dir_checkpoint = Path(outpath + 'checkpoints/')
     dir_validation = Path(outpath + 'validation/')
     dir_test = Path(outpath)
-
-
-
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #device = get_default_device()
@@ -480,10 +531,9 @@ if __name__ == '__main__':
         num_c = args.k_prevs+1
     else:
         num_c=1
+    if args.treat_nodata_regions:
+        num_c = num_c*2
 
-    # Change here to adapt to your data
-    # n_channels=1 for intrfrgrm images
-    # n_classes is the number of probabilities you want to get per pixel
     if args.attn_unet:
         model = AttentionUNet(n_channels=num_c, n_classes=args.classes,bilinear=args.bilinear)
     else:

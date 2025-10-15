@@ -20,10 +20,104 @@ import albumentations as A
 import geopandas as gpd
 import geopandas as gpd
 from rasterio.features import rasterize
-from rasterio.transform import from_origin
+
 import matplotlib.pyplot as plt
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+import numpy as np
+from scipy.ndimage import label
+from scipy.signal import convolve2d
+from scipy.ndimage import label
 
+from scipy.ndimage import label
+from rasterio.transform import from_origin
+
+
+from os.path import join
+import numpy as np
+from rasterio.transform import from_origin
+from rasterio.features import rasterize
+
+def make_img_path(image_dir, pref, tid, patch_size, stride, suff):
+    H, W = patch_size
+    return join(image_dir, f"{pref}{tid}_H{H}_W{W}_strpp{stride}{suff}.npy")
+
+def make_msk_path(mask_dir, data_pref, tid, patch_size, stride, suff):
+    H, W = patch_size
+    mask_pref = data_pref.replace("data_", "mask_")
+    return join(mask_dir, f"{mask_pref}{tid}_H{H}_W{W}_strpp{stride}{suff}.npy")
+
+def build_lidar_raster(tid, intf_coord, lidar_gdf, out_h, out_w, origin_shift=True):
+    """Rasterize the LiDAR polygons for a given interferogram onto the common canvas size."""
+    frame = intf_coord[tid]['frame']
+    X0, Y0 = (35.3, 31.79) if frame == 'North' else (35.25, 31.44)
+    dx = intf_coord[tid]['dx']; dy = intf_coord[tid]['dy']
+    if origin_shift:
+        X0 = X0 + 3000 * dx
+
+    src = intf_coord[tid].get('lidar_mask')
+    poly_df = lidar_gdf if (not src) else lidar_gdf[lidar_gdf['source'] == src]
+
+    if (poly_df is None) or (len(poly_df) == 0):
+        return np.ones((out_h, out_w), dtype=np.uint8)
+
+    return rasterize(
+        [(g, 1) for g in poly_df['geometry'].tolist()],
+        out_shape=(out_h, out_w),
+        transform=from_origin(X0, Y0, dx, dy),
+        fill=0,
+        all_touched=True,
+        dtype=np.uint8
+    )
+
+def patch_inside_all_lidar(x, y, rasters_by_tid, Sy, Sx, H, W):
+    """Check if the (x,y) patch window is fully inside LiDAR for *all* timesteps."""
+    y0, y1 = x * Sy, x * Sy + H
+    x0, x1 = y * Sx, y * Sx + W
+    for ras in rasters_by_tid.values():
+        if not np.all(ras[y0:y1, x0:x1]):
+            return False
+    return True
+
+
+def large_edge_zero_region(patch_hw: np.ndarray,
+                           min_edge_pixels: int = 20,
+                           min_edge_fraction: float | None = None) -> bool:
+    """
+    True if there's a connected all-zero component that touches the border
+    and is 'large' (>= min_edge_pixels or >= min_edge_fraction of the patch).
+    """
+    zm = (patch_hw == 0)
+    if not zm.any():
+        return False
+
+    Hh, Ww = zm.shape
+    structure = np.ones((3, 3), dtype=np.int8)  # 8-connectivity
+    lbl, num = label(zm, structure=structure)
+    if num == 0:
+        return False
+
+    for rid in range(1, num + 1):
+        comp = (lbl == rid)
+        touches = comp[0, :].any() or comp[-1, :].any() or comp[:, 0].any() or comp[:, -1].any()
+        if not touches:
+            continue
+        size = int(comp.sum())
+        if (min_edge_fraction is not None and size >= min_edge_fraction * Hh * Ww) or \
+           (min_edge_fraction is None and size >= min_edge_pixels):
+            return True
+    return False
+def has_zero_cc_with_min_area(patch_hw: np.ndarray, min_zero_area_pix: int = 10) -> bool:
+    zm = (patch_hw == 0)
+    if not zm.any():
+        return False
+    # 8-connectivity
+    structure = np.ones((3, 3), dtype=np.int8)
+    lbl, num = label(zm, structure=structure)
+    if num == 0:
+        return False
+    counts = np.bincount(lbl.ravel())
+    # counts[0] = background; CC areas start at index 1
+    return (counts[1:].max() if counts.size > 1 else 0) >= min_zero_area_pix
 def load_image(filename):
     ext = splitext(filename)[1]
     if ext == '.npy':
@@ -70,6 +164,7 @@ class SubsiDataset(Dataset):
     def __init__(self,args, image_dir, mask_dir, intrfrgrm_list=None, scale: float = 1.0, mask_suffix: str = '',dset = 'train',augment = False,seq_dict=None ):
         super(SubsiDataset, self).__init__()
 
+        self.nonz_patches_dict = None
         self.image_dir = Path(image_dir)
         self.mask_dir = Path(mask_dir)
 
@@ -82,7 +177,7 @@ class SubsiDataset(Dataset):
         if args.add_temporal:
             self.temporal = True
             with open(image_dir+'/'+'nonz_indices.json',"r") as f:
-                nonz_pathces_dict = json.load(f)
+                self.nonz_patches_dict = json.load(f)
                 self.seq_dict  = seq_dict
             with open('intf_coord.json') as f:
                 intf_coord = json.load(f)
@@ -124,97 +219,81 @@ class SubsiDataset(Dataset):
 
                 image_data = np.load(join(self.image_dir, pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) + suff+'.npy'))
                 mask_data = np.load(join(self.mask_dir, mask_pref + id +'_H{}'.format(args.patch_size[0]) + '_W{}'.format(args.patch_size[1]) +'_strpp{}'.format(args.stride) +mask_suff+'.npy'))
+
                 if self.temporal:
-                    rc = nonz_pathces_dict[id]  # list[(x,y)] from current
-                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs … present (T = k_prev+1)
-
-                    def img_path(tid):
-                        return join(self.image_dir,
-                                    pref + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
-
-                    def msk_path(tid):
-                        return join(self.mask_dir,
-                                    pref.replace("data_", "mask_") + tid +
-                                    f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
+                    # --- tids & loaders ---
+                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # list of intf ids:  k_prevs+current e.g.: ['20210304_20210315','20210315_20210326','20210326_20210406']
 
                     # load per-time arrays (current already in memory)
-                    img_pa = [image_data if tid == id else np.load(img_path(tid)).astype(np.float32) for tid in
-                              tids]  # (Xi,Yi,H,W)
-                    msk_pa = [mask_data if tid == id else np.load(msk_path(tid)).astype(np.float32) for tid in
-                              tids]  # (Xi,Yi,H,W)
+                    img_pa = [
+                        image_data if tid == id else np.load(
+                            make_img_path(self.image_dir, pref, tid, args.patch_size, args.stride, suff)
+                        ).astype(np.float32)
+                        for tid in tids
+                    ]  # list of the prevs+current np arrays: [(Xi,Yi,H,W)_curr,(Xi,Yi,H,W)_t-1,(Xi,Yi,H,W)_t-2]
 
-                    # keep only coordinates valid for *all* times (by patch grid bounds)
-                    rc_valid = [(x, y) for (x, y) in rc
-                                if all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
+                    msk_pa = [
+                        mask_data if tid == id else np.load(
+                            make_msk_path(self.mask_dir, pref, tid, args.patch_size, args.stride, suff)
+                        ).astype(np.float32)
+                        for tid in tids
+                    ]  # same for mask: [(Xi,Yi,H,W),(Xi,Yi,H,W)_t-1,(Xi,Yi,H,W)_t-2]
 
-                    # --- LiDAR check for ALL times: require patch window fully inside LiDAR raster ---
-                    Sy = args.patch_size[0] // args.stride  # pixel stride (rows)
-                    Sx = args.patch_size[1] // args.stride  # pixel stride (cols)
+                    # sizes/stride
+                    Sy = args.patch_size[0] // args.stride
+                    Sx = args.patch_size[1] // args.stride
                     H, W = args.patch_size
+                    ny_common = min(p.shape[0] for p in img_pa)
+                    nx_common = min(p.shape[1] for p in img_pa)
 
-                    # cache rasters per (tid, ny, nx) to avoid re-rasterizing in the loop
-                    _lidar_cache = {}
+                    # crop all to the common grid
+                    img_pa = [p[:ny_common, :nx_common, :H, :W] for p in img_pa]
+                    msk_pa = [p[:ny_common, :nx_common, :H, :W] for p in msk_pa]
 
-                    def lidar_raster_for(tid, ny, nx):
-                        key = (tid, ny, nx)
-                        if key in _lidar_cache:
-                            return _lidar_cache[key]
+                    # ---- UNION of non-zero indices across ALL tids (current + prevs), clipped to common grid ----
+                    seen = set()
+                    rc_union = []
+                    for tid_u in tids:
+                        for xy in self.nonz_patches_dict.get(tid_u, []):
+                            x, y = int(xy[0]), int(xy[1])
+                            if 0 <= x < ny_common and 0 <= y < nx_common and (x, y) not in seen:
+                                rc_union.append((x, y))
+                                seen.add((x, y))
 
-                        # choose origin by frame to match your aligned patch generation
-                        frame = self.intf_coord[tid]['frame']
-                        X0_t, Y0_t = (35.36, 31.79) if frame == 'North' else (35.36, 31.44)
-                        dx_t = self.intf_coord[tid]['dx']
-                        dy_t = self.intf_coord[tid]['dy']
+                    # ---- build LiDAR rasters once per tid on the common canvas ----
+                    out_h = ny_common * Sy + H
+                    out_w = nx_common * Sx + W
+                    rasters_by_tid = {
+                        tid: build_lidar_raster(tid, self.intf_coord, self.lidar_gdf, out_h, out_w, origin_shift=True)
+                        for tid in tids
+                    }
 
-                        # reconstruct canvas size used by reconstruction: out = ny*stride + H
-                        out_h = ny * Sy + H
-                        out_w = nx * Sx + W
+                    # ---- COMMON LiDAR gating over the UNION indices ----
+                    rc_lidar = [(x, y) for (x, y) in rc_union
+                                if patch_inside_all_lidar(x, y, rasters_by_tid, Sy, Sx, H, W)]
 
-                        # select LiDAR polygons for this tid’s source
-                        src = self.intf_coord[tid]['lidar_mask']
-                        poly_df = self.lidar_gdf if (src is None or (isinstance(src, str) and len(src) == 0)) \
-                            else self.lidar_gdf[self.lidar_gdf['source'] == src]
+                    rc_use = rc_lidar  # (extend here if you later add zero-region extras, etc.)
 
-                        if poly_df is None or len(poly_df) == 0:
-                            # No polygons -> consider everything inside (or flip to all-zero if you prefer strict behavior)
-                            ras = np.ones((out_h, out_w), dtype=np.uint8)
-                        else:
-                            ras = rasterize(
-                                [(g, 1) for g in poly_df['geometry'].tolist()],
-                                out_shape=(out_h, out_w),
-                                transform=from_origin(X0_t, Y0_t, dx_t, dy_t),
-                                fill=0,
-                                all_touched=True,
-                                dtype=np.uint8
-                            )
-                        _lidar_cache[key] = ras
-                        return ras
-
-                    rc_valid_lidar = []
-                    for (x, y) in rc_valid:
-                        y0_pix, y1_pix = x * Sy, x * Sy + H
-                        x0_pix, x1_pix = y * Sx, y * Sx + W
-                        ok = True
-                        for tid, p in zip(tids, img_pa):
-                            ny_t, nx_t = p.shape[0], p.shape[1]
-                            ras = lidar_raster_for(tid, ny_t, nx_t)
-                            # require FULL coverage of the patch by LiDAR (use np.all; change to .any if partial allowed)
-                            if not np.all(ras[y0_pix:y1_pix, x0_pix:x1_pix]):
-                                ok = False
-                                break
-                        if ok:
-                            rc_valid_lidar.append((x, y))
-
-                    # proceed with *only* the LiDAR-filtered coordinates
-                    rc_use = rc_valid_lidar
-
-                    # build (T, N, H, W) image stack and unioned mask (N, H, W)
-                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in
-                                     img_pa]  # list of (N,H,W)
+                    # 4) Build (T, N, H, W) image stack and unioned mask (N, H, W)
+                    # image_data: (T, N, H, W)
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in img_pa]  # (N,H,W) each
                     image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
 
-                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # list of (N,H,W)
+                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # (N,H,W) each
                     mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
+
+                    if args.treat_nodata_regions:
+                        tol = 1e-6  # tolerance around 0.0 for "no-data"
+                        # valid = 1 where value is NOT (near) zero; 0 where sharp zero => no-data
+                        V = (np.abs(image_data) > tol).astype(np.float32)  # (T,N,H,W)
+
+                        # (optional) also treat NaNs as no-data
+                        if np.isnan(image_data).any():
+                            V = V & (~np.isnan(image_data))
+                            image_data = np.nan_to_num(image_data, nan=0.0)
+
+                        # append per-time validity channels -> shape becomes (2T, N, H, W)
+                        image_data = np.concatenate([image_data, V], axis=0).astype(np.float32)
 
 
                 elif args.nonoverlap_tr_tst :
