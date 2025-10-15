@@ -265,9 +265,9 @@ def train_model(
                 logging.info(f'val interferograms: {val_list}')
                 logging.info(f'train interferograms: {train_list}')
         #
-        train_list = ['20191129_20191210']
-        test_list = ['20191129_20191210']
-        val_list = ['20191129_20191210']
+        # train_list = ['20191129_20191210']
+        # test_list = ['20191129_20191210']
+        # val_list = ['20191129_20191210']
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
