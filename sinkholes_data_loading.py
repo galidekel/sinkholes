@@ -46,13 +46,11 @@ def make_msk_path(mask_dir, data_pref, tid, patch_size, stride, suff):
     mask_pref = data_pref.replace("data_", "mask_")
     return join(mask_dir, f"{mask_pref}{tid}_H{H}_W{W}_strpp{stride}{suff}.npy")
 
-def build_lidar_raster(tid, intf_coord, lidar_gdf, out_h, out_w, origin_shift=True):
+def build_lidar_raster(tid, intf_coord, lidar_gdf, out_h, out_w):
     """Rasterize the LiDAR polygons for a given interferogram onto the common canvas size."""
     frame = intf_coord[tid]['frame']
-    X0, Y0 = (35.3, 31.79) if frame == 'North' else (35.25, 31.44)
+    X0, Y0 = (35.36, 31.79) if frame == 'North' else (35.36, 31.44)
     dx = intf_coord[tid]['dx']; dy = intf_coord[tid]['dy']
-    if origin_shift:
-        X0 = X0 + 3000 * dx
 
     src = intf_coord[tid].get('lidar_mask')
     poly_df = lidar_gdf if (not src) else lidar_gdf[lidar_gdf['source'] == src]
@@ -78,46 +76,6 @@ def patch_inside_all_lidar(x, y, rasters_by_tid, Sy, Sx, H, W):
             return False
     return True
 
-
-def large_edge_zero_region(patch_hw: np.ndarray,
-                           min_edge_pixels: int = 20,
-                           min_edge_fraction: float | None = None) -> bool:
-    """
-    True if there's a connected all-zero component that touches the border
-    and is 'large' (>= min_edge_pixels or >= min_edge_fraction of the patch).
-    """
-    zm = (patch_hw == 0)
-    if not zm.any():
-        return False
-
-    Hh, Ww = zm.shape
-    structure = np.ones((3, 3), dtype=np.int8)  # 8-connectivity
-    lbl, num = label(zm, structure=structure)
-    if num == 0:
-        return False
-
-    for rid in range(1, num + 1):
-        comp = (lbl == rid)
-        touches = comp[0, :].any() or comp[-1, :].any() or comp[:, 0].any() or comp[:, -1].any()
-        if not touches:
-            continue
-        size = int(comp.sum())
-        if (min_edge_fraction is not None and size >= min_edge_fraction * Hh * Ww) or \
-           (min_edge_fraction is None and size >= min_edge_pixels):
-            return True
-    return False
-def has_zero_cc_with_min_area(patch_hw: np.ndarray, min_zero_area_pix: int = 10) -> bool:
-    zm = (patch_hw == 0)
-    if not zm.any():
-        return False
-    # 8-connectivity
-    structure = np.ones((3, 3), dtype=np.int8)
-    lbl, num = label(zm, structure=structure)
-    if num == 0:
-        return False
-    counts = np.bincount(lbl.ravel())
-    # counts[0] = background; CC areas start at index 1
-    return (counts[1:].max() if counts.size > 1 else 0) >= min_zero_area_pix
 def load_image(filename):
     ext = splitext(filename)[1]
     if ext == '.npy':
@@ -264,7 +222,7 @@ class SubsiDataset(Dataset):
                     out_h = ny_common * Sy + H
                     out_w = nx_common * Sx + W
                     rasters_by_tid = {
-                        tid: build_lidar_raster(tid, self.intf_coord, self.lidar_gdf, out_h, out_w, origin_shift=True)
+                        tid: build_lidar_raster(tid, self.intf_coord, self.lidar_gdf, out_h, out_w)
                         for tid in tids
                     }
 
