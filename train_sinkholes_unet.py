@@ -359,7 +359,7 @@ def train_model(
                               lr=learning_rate, weight_decay=weight_decay, momentum=momentum, foreach=True)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=5)  # goal: maximize Dice score
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
-    criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss(pos_weight=torch.tensor([8.0], device=device))
+    criterion = nn.CrossEntropyLoss() if model.n_classes > 1 else nn.BCEWithLogitsLoss(pos_weight=torch.tensor([args.pos_w], device=device))
     global_step = 0
 
     #Begin training
@@ -483,6 +483,8 @@ def get_args():
     parser.add_argument('--add_temporal', action='store_true')
     parser.add_argument('--k_prevs',type=int, default=2)
     parser.add_argument('--treat_nodata_regions', action='store_true')
+
+    parser.add_argument('--pos_w', type=float, default=1)
 
 
 
