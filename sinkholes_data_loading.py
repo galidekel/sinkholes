@@ -83,7 +83,7 @@ class SubsiDataset(Dataset):
         if args.add_temporal:
             self.temporal = True
             with open(image_dir + '/' + 'nonz_indices.json', "r") as f:
-                nonz_pathces_dict = json.load(f)
+                nonz_patches_dict = json.load(f)
                 self.seq_dict = seq_dict
         else:
             self.temporal = False
@@ -125,7 +125,8 @@ class SubsiDataset(Dataset):
                                          mask_pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(
                                              args.patch_size[1]) + '_strpp{}'.format(args.stride) + mask_suff + '.npy'))
                 if self.temporal:
-                    rc = nonz_pathces_dict[id]  # [(x,y), ...] from current
+                    rc = nonz_patches_dict[id]  # [(x,y), ...] from current
+
                     tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present (T = k_prev+1)
 
                     def img_path(tid):
@@ -142,10 +143,21 @@ class SubsiDataset(Dataset):
                     msk_pa = [mask_data if tid == id else np.load(msk_path(tid)).astype(np.float32) for tid in
                               tids]  # each (X,Y,H,W)
 
-                    # keep only patch coords valid for **all** times
-                    rc_valid = [(x, y) for (x, y) in rc if
-                                all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
+                    # # keep only patch coords valid for **all** times
+                    # rc_valid = [(x, y) for (x, y) in rc if
+                    #             all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
+                    ny_common = min(p.shape[0] for p in img_pa)
+                    nx_common = min(p.shape[1] for p in img_pa)
+                    rc_union = []
+                    seen = set()
+                    for tid_u in tids:
+                        for xy in nonz_patches_dict.get(tid_u, []):
+                            x, y = int(xy[0]), int(xy[1])
+                            if 0 <= x < ny_common and 0 <= y < nx_common and (x, y) not in seen:
+                                rc_union.append((x, y))
+                                seen.add((x, y))
 
+                    rc_valid = rc_union
                     # stack images per time: list[(N,H,W)] → (T,N,H,W)
                     patches_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in
                                      img_pa]  # list of (N,H,W)
