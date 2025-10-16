@@ -16,7 +16,7 @@ from get_intf_info import *
 
 logging.basicConfig(level=logging.INFO)
 
-def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=True):
+def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=True,offset = 0):
     """
     Returns:
       data_patches         -> (Xi, Yi, H, W)
@@ -27,9 +27,9 @@ def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=Tru
     """
     if mask_array is not None:
         assert input_array.shape == mask_array.shape, "Mask array should be the same shape as input array"
-        mask_array = mask_array[:, :4000]
+        mask_array = mask_array[:, offset:offset+4000]
 
-    input_array = input_array[:, :4000]
+    input_array = input_array[:, offset:offset+4000]
     rows, cols = input_array.shape
     H, W = window_size
     Sy, Sx = stride
@@ -95,6 +95,10 @@ def get_args():
     parser.add_argument('--intf_22_23',  type=str, default='False')
     parser.add_argument('--align_frames',  action='store_true')
     parser.add_argument('--days_diff',  type=int, default=11)
+    parser.add_argument('--x0_N',type=float,default=0.0)
+    parser.add_argument('--x0_S',type=float,default=0.0)
+    parser.add_argument('--offset_x',type=int,default=0)
+    parser.add_argument('--nx',type=int,default=4500)
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -221,19 +225,20 @@ if __name__ == '__main__':
             plt.tight_layout()
             plt.show()
 
-        # Optional alignment
+        # alignment
         if args.align_frames:
             if frame == 'North':
-                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.36, 31.79)
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, args.x0_N, 31.79)
             else:
-                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, 35.36, 31.44)
+                data, mask, _, _, _ = crop_to_start_xy(data, mask, x0, y0, args.x0_S, 31.44)
 
         # Patchify (will yield empty nonz arrays if mask has no positives)
         data_patches, mask_patches, data_patches_nonz, mask_patches_nonz, nonz_indices = patchify(
             data,
             patch_size,
             stride=(patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch),
-            mask_array=mask
+            mask_array=mask,
+            offset=args.offset_x
         )
         nonzero_mask_inds_by_intf[intfrgrm_name] = nonz_indices
 
