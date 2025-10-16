@@ -16,7 +16,7 @@ from get_intf_info import *
 
 logging.basicConfig(level=logging.INFO)
 
-def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=True,offset = 0):
+def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=True,offset = 0,nx=4500):
     """
     Returns:
       data_patches         -> (Xi, Yi, H, W)
@@ -27,9 +27,9 @@ def patchify(input_array, window_size, stride, mask_array=None, nonz_pathces=Tru
     """
     if mask_array is not None:
         assert input_array.shape == mask_array.shape, "Mask array should be the same shape as input array"
-        mask_array = mask_array[:, offset:offset+4000]
+        mask_array = mask_array[:, offset:offset+nx]
 
-    input_array = input_array[:, offset:offset+4000]
+    input_array = input_array[:, offset:offset+nx]
     rows, cols = input_array.shape
     H, W = window_size
     Sy, Sx = stride
@@ -238,7 +238,8 @@ if __name__ == '__main__':
             patch_size,
             stride=(patch_size[0] // args.strides_per_patch, patch_size[1] // args.strides_per_patch),
             mask_array=mask,
-            offset=args.offset_x
+            offset=args.offset_x,
+            nx = args.nx
         )
         nonzero_mask_inds_by_intf[intfrgrm_name] = nonz_indices
 
