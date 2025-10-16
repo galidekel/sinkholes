@@ -157,6 +157,14 @@ class SubsiDataset(Dataset):
                     masks_TNHW = np.stack(masks_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
                     mask_data = (masks_TNHW > 0).any(axis=0).astype(np.float32)
 
+                    if args.treat_nodata_regions:
+                        tol = 1e-9
+                        V = (np.abs(image_data) > tol).astype(np.float32)  # (T,N,H,W), 1=valid, 0=no-data
+                        if np.isnan(image_data).any():
+                            V = V & (~np.isnan(image_data))
+                            image_data = np.nan_to_num(image_data, nan=0.0)
+                        image_data = np.concatenate([image_data, V], axis=0).astype(np.float32)  # -> (2T,N,H,W)
+
                 elif args.retrain_with_fpz:
                     fpz_path = join(self.image_dir, 'additional_fp_patches/' + 'data_patches_fp_' + id + '.npy')
                     if os.path.isfile(fpz_path):
@@ -328,7 +336,7 @@ class SubsiDataset(Dataset):
                     out[c][zmask] = 0.5
         return out
 
-        return img
+
 
     def __getitem__(self, sample):
         intf_idx, patch_idx = self.index_map[sample]
