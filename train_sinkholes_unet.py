@@ -264,10 +264,10 @@ def train_model(
                 logging.info(f' test interferograms: {test_list}')
                 logging.info(f'val interferograms: {val_list}')
                 logging.info(f'train interferograms: {train_list}')
-        #
-        # train_list = ['20191129_20191210']
-        # test_list = ['20191129_20191210']
-        # val_list = ['20191129_20191210']
+        if is_running_locally:
+            train_list = ['20191129_20191210']
+            test_list = ['20191129_20191210']
+            val_list = ['20191129_20191210']
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
@@ -485,6 +485,8 @@ def get_args():
     parser.add_argument('--treat_nodata_regions', action='store_true')
 
     parser.add_argument('--pos_w', type=float, default=1)
+    parser.add_argument('--lidar_gate', action='store_true')
+
 
 
 

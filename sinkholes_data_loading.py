@@ -180,7 +180,7 @@ class SubsiDataset(Dataset):
 
                 if self.temporal:
                     # --- tids & loaders ---
-                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # list of intf ids:  k_prevs+current e.g.: ['20210304_20210315','20210315_20210326','20210326_20210406']
+                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # k_prevs + current
 
                     # load per-time arrays (current already in memory)
                     img_pa = [
@@ -188,14 +188,13 @@ class SubsiDataset(Dataset):
                             make_img_path(self.image_dir, pref, tid, args.patch_size, args.stride, suff)
                         ).astype(np.float32)
                         for tid in tids
-                    ]  # list of the prevs+current np arrays: [(Xi,Yi,H,W)_curr,(Xi,Yi,H,W)_t-1,(Xi,Yi,H,W)_t-2]
-
+                    ]  # [(Xi,Yi,H,W), ...]
                     msk_pa = [
                         mask_data if tid == id else np.load(
                             make_msk_path(self.mask_dir, pref, tid, args.patch_size, args.stride, suff)
                         ).astype(np.float32)
                         for tid in tids
-                    ]  # same for mask: [(Xi,Yi,H,W),(Xi,Yi,H,W)_t-1,(Xi,Yi,H,W)_t-2]
+                    ]
 
                     # sizes/stride
                     Sy = args.patch_size[0] // args.stride
@@ -218,40 +217,40 @@ class SubsiDataset(Dataset):
                                 rc_union.append((x, y))
                                 seen.add((x, y))
 
-                    # ---- build LiDAR rasters once per tid on the common canvas ----
-                    out_h = ny_common * Sy + H
-                    out_w = nx_common * Sx + W
-                    rasters_by_tid = {
-                        tid: build_lidar_raster(tid, self.intf_coord, self.lidar_gdf, out_h, out_w)
-                        for tid in tids
-                    }
+                    # ---- (Optional) LiDAR gating over UNION indices ----
+                    use_lidar = getattr(args, 'lidar_gate', True)
 
-                    # ---- COMMON LiDAR gating over the UNION indices ----
-                    rc_lidar = [(x, y) for (x, y) in rc_union
-                                if patch_inside_all_lidar(x, y, rasters_by_tid, Sy, Sx, H, W)]
+                    if use_lidar:
+                        # build LiDAR rasters once per tid on the common canvas
+                        out_h = ny_common * Sy + H
+                        out_w = nx_common * Sx + W
+                        rasters_by_tid = {
+                            tid: build_lidar_raster(tid, self.intf_coord, self.lidar_gdf, out_h, out_w)
+                            for tid in tids
+                        }
 
-                    rc_use = rc_lidar  # (extend here if you later add zero-region extras, etc.)
+                        # keep only patches fully inside LiDAR across ALL tids
+                        rc_lidar = [(x, y) for (x, y) in rc_union
+                                    if patch_inside_all_lidar(x, y, rasters_by_tid, Sy, Sx, H, W)]
+                        rc_use = rc_lidar
+                    else:
+                        # no LiDAR consideration
+                        rc_use = rc_union
 
                     # 4) Build (T, N, H, W) image stack and unioned mask (N, H, W)
-                    # image_data: (T, N, H, W)
-                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in img_pa]  # (N,H,W) each
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in img_pa]  # each (N,H,W)
                     image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
 
-                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # (N,H,W) each
+                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # each (N,H,W)
                     mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
 
                     if args.treat_nodata_regions:
-                        tol = 1e-6  # tolerance around 0.0 for "no-data"
-                        # valid = 1 where value is NOT (near) zero; 0 where sharp zero => no-data
-                        V = (np.abs(image_data) > tol).astype(np.float32)  # (T,N,H,W)
-
-                        # (optional) also treat NaNs as no-data
+                        tol = 1e-6
+                        V = (np.abs(image_data) > tol).astype(np.float32)  # (T,N,H,W), 1=valid, 0=no-data
                         if np.isnan(image_data).any():
                             V = V & (~np.isnan(image_data))
                             image_data = np.nan_to_num(image_data, nan=0.0)
-
-                        # append per-time validity channels -> shape becomes (2T, N, H, W)
-                        image_data = np.concatenate([image_data, V], axis=0).astype(np.float32)
+                        image_data = np.concatenate([image_data, V], axis=0).astype(np.float32)  # -> (2T,N,H,W)
 
 
                 elif args.nonoverlap_tr_tst :
