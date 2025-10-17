@@ -202,6 +202,8 @@ def get_pred_args():
     p.add_argument('--years_22_23', action='store_true')
     p.add_argument('--unioned_mask', action='store_true')
     p.add_argument('--k_prevs', type=int, default=0)
+    p.add_argument('--treat_nodata_regions', action='store_true')
+
     return p.parse_args()
 
 # ----------------------------- main ------------------------------
@@ -245,11 +247,14 @@ if __name__ == '__main__':
         with open('./test_data/' + args.test_dataset, 'rb') as f:
             test_data = pickle.load(f)
         intf_list = test_data.ids
+    num_c = args.k_prevs + 1
 
+    if args.treat_nodata_regions:
+        num_c = num_c*2
     # model
-    net = UNet(n_channels=args.k_prevs + 1, n_classes=1, bilinear=False)
+    net = UNet(n_channels=num_c, n_classes=1, bilinear=False)
     if args.attn_unet:
-        net = AttentionUNet(n_channels=args.k_prevs + 1, n_classes=1, bilinear=False)
+        net = AttentionUNet(n_channels=num_c, n_classes=1, bilinear=False)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f'Loading model {args.model} on device {device}')
