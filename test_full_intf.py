@@ -80,7 +80,7 @@ def reconstruct_intf_prediction(
                 srcs = [current_lidar_mask] * C
 
         mask_all = np.zeros((C, out_h, out_w), dtype=np.uint8)
-        tr = rasterio.transform.from_origin(x0, y0, dx, dy)  # same grid as recon
+        tr = rasterio.transform.from_origin(x0+3000*dx, y0, dx, dy)  # same grid as recon
 
         for c, src in enumerate(srcs):
             # robust filter
@@ -141,7 +141,7 @@ def reconstruct_intf_prediction(
 
     # -------- optional quick plot (overlay current LiDAR) --------
     if plot:
-        extent = [x0 , x0  + dx * out_w, y0 - dy * out_h, y0]
+        extent = [x0+3000*dx , x0 +3000*dx + dx * out_w, y0 - dy * out_h, y0]
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6), sharex=True, sharey=True)
         fig.subplots_adjust(wspace=0.02)
 
@@ -286,9 +286,9 @@ if __name__ == '__main__':
 
         # align starts by frame (as in your original)
         if ic[11] == 'North':
-            intfs_coords = (35.36, 31.79) + ic[2:]
+            intfs_coords = (35.3, 31.79) + ic[2:]
         else:
-            intfs_coords = (35.36, 31.44) + ic[2:]
+            intfs_coords = (35.25, 31.44) + ic[2:]
 
         # file paths
         data_fn = f'data_patches_{intf}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'
