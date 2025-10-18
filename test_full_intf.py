@@ -31,7 +31,8 @@ def reconstruct_intf_prediction(
     plot=False,
     lidar_sources=None,     # list[str|None] of length C; if None -> replicate current for all
     overlay_on_preds=True,
-    device=None
+    device=None,
+    treat_nodata_regions=False
 ):
     """
     Returns (if mask is not None):
@@ -127,12 +128,25 @@ def reconstruct_intf_prediction(
                 is_within_mask = mask_all[:, y0o:y1o, x0o:x1o].all()
 
             if is_within_mask:
+                # Build (1, C or 2C, H, W) for net and predict
                 x_np = data_stack[:, i, j]  # (C, H, W)
+
+                # >>> added: concatenate per-time validity maps to mirror training (2C input) <<<
+                if treat_nodata_regions:
+                    # treat exact zeros as no-data; tweak tol if needed (e.g., if 0.5 denotes no-data, use |x-0.5|<=tol)
+                    tol = 1e-9
+                    if np.isnan(x_np).any():
+                        x_np = np.nan_to_num(x_np, nan=0.0)
+                    v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)  # (C, H, W), 1=valid, 0=no-data
+                    x_np = np.concatenate([x_np, v_np], axis=0)  # (2C, H, W)
+                # <<< end added >>>
+
                 image = torch.from_numpy(x_np[None]).to(device=device, memory_format=torch.channels_last)
                 with torch.no_grad():
                     logits = net(image)
-                    prob   = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)  # (H,W)
-                    pred   = (prob > 0.5).astype(np.float32)
+                    prob = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)  # (H, W)
+                    pred = (prob > 0.5).astype(np.float32)
+
                 reconstructed_pred[y0o:y1o, x0o:x1o] += pred / (stride**2)
 
     reconstructed_pred_th = (reconstructed_pred > rth).astype(np.float32)
@@ -376,7 +390,8 @@ if __name__ == '__main__':
             plot=False,
             lidar_sources=lidar_sources,
             overlay_on_preds=True,
-            device=device
+            device=device,
+            treat_nodata_regions=args.treat_nodata_regions
         )
 
         if mask is None:
