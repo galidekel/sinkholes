@@ -393,12 +393,26 @@ def train_model(
                     y_float = true_masks.float().unsqueeze(1)  # (B,1,H,W)
 
                     if args.treat_nodata_regions:
-                        # Masked BCE + masked Dice using V_any
-                        loss_bce = masked_bce_with_logits(logits, y_float, V_any,pos_w=8)
+                        loss_bce = masked_bce_with_logits(logits, y_float, V_any, pos_w=8.0)
                         loss_dice = masked_dice_loss_binary(logits, y_float, V_any)
-                        # Optional tiny regularizer: discourage positives where ALL slices are nodata
-                        no_data = (1.0 - V_any)
-                        loss = loss_bce + loss_dice + 1e-3 * (torch.sigmoid(logits) * no_data).mean()
+
+                        # no-data FP suppression (outside GT, with tolerance)
+                        r_tol = 2  # pixels; try 1–3
+                        lam = 0.2  # weight; tune 0.1–0.5
+
+                        y_dil = F.max_pool2d(y_float, kernel_size=2 * r_tol + 1, stride=1,
+                                             padding=r_tol)  # tolerate small holes
+                        M_fp = (1.0 - V_any) * (1.0 - y_dil)  # penalize invalid pixels not near GT
+
+                        if M_fp.sum() > 0:
+                            bce_fp = F.binary_cross_entropy_with_logits(
+                                logits, torch.zeros_like(y_float), reduction='none'
+                            )
+                            bce_fp = (bce_fp * M_fp).sum() / M_fp.sum().clamp(min=1.0)
+                        else:
+                            bce_fp = logits.new_tensor(0.0)
+
+                        loss = loss_bce + loss_dice + lam * bce_fp
                     else:
                         # Unmasked baseline losses
                         loss = criterion(logits.squeeze(1), y_float.squeeze(1))
@@ -486,6 +500,8 @@ def get_args():
 
     parser.add_argument('--pos_w', type=float, default=1)
     parser.add_argument('--lidar_gate', action='store_true')
+    parser.add_argument('--lidar_gate', action='store_true')
+
 
 
 
@@ -537,6 +553,7 @@ if __name__ == '__main__':
         num_c=1
     if args.treat_nodata_regions:
         num_c = num_c*2
+
 
     if args.attn_unet:
         model = AttentionUNet(n_channels=num_c, n_classes=args.classes,bilinear=args.bilinear)
