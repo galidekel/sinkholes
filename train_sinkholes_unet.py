@@ -500,7 +500,6 @@ def get_args():
 
     parser.add_argument('--pos_w', type=float, default=1)
     parser.add_argument('--lidar_gate', action='store_true')
-    parser.add_argument('--lidar_gate', action='store_true')
 
 
 
