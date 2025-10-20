@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 import random
-import numpy as np
+
 import torch
 from PIL import Image
 from functools import lru_cache
@@ -20,6 +20,52 @@ import albumentations as A
 import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+
+# Black for 0, White for 1
+BW = ListedColormap(['black', 'white'])
+
+def plot_temporal_patch_with_mask(img: np.ndarray, mask: np.ndarray = None,
+                                  titles=None, cmap='jet'):
+    """
+    img : (T, H, W)
+    mask: (H, W) or (T, H, W). If 3D, show union across T.
+    """
+    assert img.ndim == 3, f"Expected img shape (T,H,W), got {img.shape}"
+    T, H, W = img.shape
+
+    if titles is None:
+        titles = ['Current'] + [f'Prev (t-{k})' for k in range(1, T)]
+
+    ncols = T + (1 if mask is not None else 0)
+    fig, axes = plt.subplots(1, ncols, figsize=(3.2 * ncols, 3), sharex=True, sharey=True)
+    axes = np.atleast_1d(axes)
+
+    # Common scaling for all temporal slices
+    vmin = float(np.nanmin(img))
+    vmax = float(np.nanmax(img))
+
+    # Plot temporal slices
+    for t in range(T):
+        ax = axes[t]
+        ax.imshow(img[t], cmap=cmap, vmin=vmin, vmax=vmax, interpolation='nearest')
+        ax.set_title(titles[t], fontsize=10)
+        ax.axis('off')
+
+    # Final panel: mask (black=0, white=1)
+    if mask is not None:
+        ax = axes[-1]
+        m = (mask > 0).astype(np.uint8) if mask.ndim == 2 else (mask > 0).any(axis=0).astype(np.uint8)
+        ax.imshow(m, cmap=BW, vmin=0, vmax=1, interpolation='nearest')
+        ax.set_title('Mask', fontsize=10)
+        ax.axis('off')
+
+    plt.tight_layout()
+    plt.show()
 
 
 def load_image(filename):
@@ -146,10 +192,15 @@ class SubsiDataset(Dataset):
                     # # keep only patch coords valid for **all** times
                     # rc_valid = [(x, y) for (x, y) in rc if
                     #             all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
+                    # ---- UNION of non-zero indices across ALL tids (current + prevs), clipped to common grid ----
                     ny_common = min(p.shape[0] for p in img_pa)
                     nx_common = min(p.shape[1] for p in img_pa)
-                    rc_union = []
-                    seen = set()
+                    H, W = args.patch_size
+
+                    img_pa = [p[:ny_common, :nx_common, :H, :W] for p in img_pa]
+                    msk_pa = [p[:ny_common, :nx_common, :H, :W] for p in msk_pa]
+
+                    rc_union, seen = [], set()
                     for tid_u in tids:
                         for xy in nonz_patches_dict.get(tid_u, []):
                             x, y = int(xy[0]), int(xy[1])
@@ -157,21 +208,63 @@ class SubsiDataset(Dataset):
                                 rc_union.append((x, y))
                                 seen.add((x, y))
 
+                    # Start from unioned positives
                     rc_valid = rc_union
-                    # stack images per time: list[(N,H,W)] → (T,N,H,W)
-                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in
-                                     img_pa]  # list of (N,H,W)
+
+                    # ---------- Ring negatives (extra all-zero patches near positives) ----------
+                    from scipy.ndimage import binary_dilation
+
+
+                    if getattr(args, 'add_ring_negatives', True):
+                        # 1) patch-level union mask grid across time (True where any pixel > 0 in any t)
+                        #    msk_pa: list of (ny,nx,H,W)
+                        union_grid = np.zeros((ny_common, nx_common), dtype=bool)
+                        for t in range(len(msk_pa)):
+                            union_grid |= (msk_pa[t] > 0).any(axis=(-2, -1))
+
+                        # 2) binary grid of positive patches (from rc_valid)
+                        pos_grid = np.zeros_like(union_grid, dtype=bool)
+                        for (x, y) in rc_valid:
+                            pos_grid[x, y] = True
+
+                        # 3) build an annulus around positives: (inner, outer) radii in PATCH units
+                        inner = int(getattr(args, 'neg_ring_inner', 1))  # exclude immediate neighbors
+                        outer = int(getattr(args, 'neg_ring_outer', 3))  # how far to search
+                        k_inner = np.ones((2 * inner + 1, 2 * inner + 1), dtype=bool) if inner > 0 else np.ones((1, 1),
+                                                                                                                dtype=bool)
+                        k_outer = np.ones((2 * outer + 1, 2 * outer + 1), dtype=bool)
+
+                        ring_outer = binary_dilation(pos_grid, structure=k_outer)
+                        ring_inner = binary_dilation(pos_grid, structure=k_inner) if inner > 0 else pos_grid
+                        ring = ring_outer & (~ring_inner)
+
+                        # 4) keep only ring cells that are truly ZERO in the union mask over time
+                        cand_grid = ring & (~union_grid)
+
+                        # 5) turn candidates into indices and sample
+                        cand_idx = list(zip(*np.where(cand_grid)))
+                        rng = np.random.default_rng(getattr(args, 'seed', None))
+                        neg_per_pos = float(getattr(args, 'neg_per_pos', 1.0))  # e.g., 1 negative per positive
+                        k = min(len(cand_idx), int(neg_per_pos * len(rc_valid)))
+                        rc_neg = rng.choice(cand_idx, size=k, replace=False).tolist()
+
+                        # 6) final coords = positives + sampled ring negatives
+                        rc_use = rc_valid + rc_neg
+                    else:
+                        rc_use = rc_valid
+                    # ---------------------------------------------------------------------------
+
+                    # Build (T, N, H, W) and unioned mask (N, H, W) as before
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in img_pa]  # each (N,H,W)
                     image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
 
-                    # stack masks per time, then union over time: (T,N,H,W) → (N,H,W)
-                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_valid], axis=0) for p in
-                                   msk_pa]  # list of (N,H,W)
-                    masks_TNHW = np.stack(masks_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
-                    mask_data = (masks_TNHW > 0).any(axis=0).astype(np.float32)
+                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # each (N,H,W)
+                    mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
 
+                    # (optional) your no-data treatment stays unchanged
                     if args.treat_nodata_regions:
                         tol = 1e-9
-                        V = (np.abs(image_data) > tol).astype(np.float32)  # (T,N,H,W), 1=valid, 0=no-data
+                        V = (np.abs(image_data) > tol).astype(np.float32)
                         if np.isnan(image_data).any():
                             V = V & (~np.isnan(image_data))
                             image_data = np.nan_to_num(image_data, nan=0.0)
@@ -358,6 +451,8 @@ class SubsiDataset(Dataset):
             img = self.image_data[intf_idx][:, patch_idx].astype(np.float32)
             # mask:  [1, N, H, W] -> pick patch & drop singleton -> [H, W]
             msk = self.mask_data[intf_idx][0, patch_idx].astype(np.float32)
+            # plot_temporal_patch_with_mask(img, msk, cmap='jet')
+
         else:
             # image/mask stored as [1, N, H, W] -> pick channel 0 & patch -> [H, W]
             img = self.image_data[intf_idx][0, patch_idx].astype(np.float32)

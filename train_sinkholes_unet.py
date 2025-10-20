@@ -500,6 +500,11 @@ def get_args():
 
     parser.add_argument('--pos_w', type=float, default=1)
     parser.add_argument('--lidar_gate', action='store_true')
+    parser.add_argument('--add_ring_negatives', action='store_true')
+    parser.add_argument('--neg_ring_inner', type=int, default=1)
+    parser.add_argument('--neg_ring_outer', type=int, default=3)
+    parser.add_argument('--neg_per_pos', type=float, default=1.0)
+    parser.add_argument('--seed', type=int, default=None)
 
 
 
