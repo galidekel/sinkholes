@@ -215,7 +215,7 @@ class SubsiDataset(Dataset):
                     from scipy.ndimage import binary_dilation
 
 
-                    if getattr(args, 'add_ring_negatives', True):
+                    if getattr(args, 'add_ring_negatives', True) and dset == 'train':
                         # 1) patch-level union mask grid across time (True where any pixel > 0 in any t)
                         #    msk_pa: list of (ny,nx,H,W)
                         union_grid = np.zeros((ny_common, nx_common), dtype=bool)
