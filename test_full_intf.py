@@ -398,8 +398,7 @@ if __name__ == '__main__':
             lidar_sources=lidar_sources,
             overlay_on_preds=True,
             device=device,
-            treat_nodata_regions=args.treat_nodata_regions,
-            blend=args.blend_type
+            treat_nodata_regions=args.treat_nodata_regions
         )
 
         if mask is None:
