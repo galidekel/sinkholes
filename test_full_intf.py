@@ -27,22 +27,19 @@ import rasterio
 from rasterio.features import rasterize
 
 def reconstruct_intf_prediction(
-    data,                   # (C, ny, nx, H, W) or (ny, nx, H, W)
-    intf_coords,            # tuple from get_intf_coords
+    data,                   # (C, ny, nx, H, W) or (ny, nx, H, W) ; channel 0 = current
+    intf_coords,            # tuple from get_intf_coords / your tuple logic
     net,                    # torch model
     patch_size,             # (patch_H, patch_W)
     stride,                 # int
-    rth,                    # float threshold
-    mask=None,              # (ny, nx, H, W) or None
+    rth,                    # float threshold for reconstructed_pred_th
+    mask=None,              # (ny, nx, H, W) or None (already cropped to data)
     add_lidar_mask=True,
     plot=False,
-    lidar_sources=None,     # list[str|None] of length C
+    lidar_sources=None,     # list[str|None] of length C; if None -> replicate current for all
     overlay_on_preds=True,
     device=None,
-    treat_nodata_regions=False,
-    # -------- NEW OPTIONS --------
-    blend=None,             # None | 'hann' | 'center-crop'
-    crop_margin=0.125       # for 'center-crop': fraction (0..0.45) or int pixels if >=1
+    treat_nodata_regions=False
 ):
     """
     Returns (if mask is not None):
@@ -50,6 +47,7 @@ def reconstruct_intf_prediction(
     Else:
       reconstructed_intf, reconstructed_pred, reconstructed_prevs
     """
+    # unpack coords (keep your ordering)
     x0, y0, dx, dy, ncells, nlines, x4000, x8500, current_lidar_mask, num_nonz_p, bo, frame = intf_coords
     patch_H, patch_W = patch_size
 
@@ -62,69 +60,38 @@ def reconstruct_intf_prediction(
         C = 1
         data_stack = data[None].astype(np.float32, copy=False)
 
-    # output sizes (keep your formula)
+    # output sizes
     out_h = ny * patch_H // stride + patch_H * (1 - 1 // stride)
     out_w = nx * patch_W // stride + patch_W * (1 - 1 // stride)
 
-    # --- helpers for blending modes ---
-    def get_hann_window(h, w):
-        wy = np.hanning(h) if h > 1 else np.ones(1, dtype=np.float32)
-        wx = np.hanning(w) if w > 1 else np.ones(1, dtype=np.float32)
-        W  = (wy[:, None] * wx[None, :]).astype(np.float32)
-        return W / (W.max() + 1e-8)
+    # accumulators
+    reconstructed_intf_all = np.zeros((C, out_h, out_w), dtype=np.float32)
+    reconstructed_pred     = np.zeros((out_h, out_w), dtype=np.float32)
+    reconstructed_mask     = None
+    if mask is not None:
+        reconstructed_mask = np.zeros((out_h, out_w), dtype=np.float32)
 
-    def get_crop_bounds(H, W, margin):
-        if margin < 1:  # fraction
-            m_y = int(round(H * margin))
-            m_x = int(round(W * margin))
-        else:           # pixels
-            m_y = int(margin); m_x = int(margin)
-        m_y = min(max(m_y, 0), H//2 - 1 if H > 2 else 0)
-        m_x = min(max(m_x, 0), W//2 - 1 if W > 2 else 0)
-        return m_y, H - m_y, m_x, W - m_x
-
-    # choose accumulators based on blend
-    eps = 1e-8
-    use_hann = (blend == 'hann')
-    use_crop = (blend == 'center-crop')
-
-    if use_hann:
-        Wn = get_hann_window(patch_H, patch_W)
-        pred_num = np.zeros((out_h, out_w), dtype=np.float32)
-        pred_den = np.zeros((out_h, out_w), dtype=np.float32)
-        intf_num = np.zeros((C, out_h, out_w), dtype=np.float32)
-        intf_den = np.zeros((out_h, out_w), dtype=np.float32)
-        mask_num = np.zeros((out_h, out_w), dtype=np.float32) if mask is not None else None
-        mask_den = np.zeros((out_h, out_w), dtype=np.float32) if mask is not None else None
-    elif use_crop:
-        m_y0, m_y1, m_x0, m_x1 = get_crop_bounds(patch_H, patch_W, crop_margin)
-        pred_acc = np.zeros((out_h, out_w), dtype=np.float32)
-        pred_cnt = np.zeros((out_h, out_w), dtype=np.float32)
-        intf_acc = np.zeros((C, out_h, out_w), dtype=np.float32)
-        intf_cnt = np.zeros((out_h, out_w), dtype=np.float32)
-        mask_acc = np.zeros((out_h, out_w), dtype=np.float32) if mask is not None else None
-        mask_cnt = np.zeros((out_h, out_w), dtype=np.float32) if mask is not None else None
-    else:
-        # Original: simple average via / (stride**2)
-        reconstructed_intf_all = np.zeros((C, out_h, out_w), dtype=np.float32)
-        reconstructed_pred     = np.zeros((out_h, out_w), dtype=np.float32)
-        reconstructed_mask     = np.zeros((out_h, out_w), dtype=np.float32) if mask is not None else None
-
-    # -------- LiDAR mask(s) --------
-    rasterized_polygon_current = None
+    # -------- LiDAR mask(s): AND across time steps --------
+    rasterized_polygon_current = None  # for overlay (channel 0)
     mask_polyg_current = None
-    mask_all = None
+
+    mask_all = None  # (C, out_h, out_w) uint8
     if add_lidar_mask:
         lidar_gdf = gpd.read_file('lidar_mask_polygs.shp')
-        srcs = [current_lidar_mask] * C if lidar_sources is None else list(lidar_sources)
-        if len(srcs) != C:
-            print(f"[warn] lidar_sources len {len(srcs)} != C {C}; using current for all")
+        # sources list
+        if lidar_sources is None:
             srcs = [current_lidar_mask] * C
+        else:
+            srcs = list(lidar_sources)
+            if len(srcs) != C:
+                print(f"[warn] lidar_sources len {len(srcs)} != C {C}; using current for all")
+                srcs = [current_lidar_mask] * C
 
         mask_all = np.zeros((C, out_h, out_w), dtype=np.uint8)
-        tr = rasterio.transform.from_origin(x0 + 3000*dx, y0, dx, dy)
+        tr = rasterio.transform.from_origin(x0+3000*dx, y0, dx, dy)  # same grid as recon
 
         for c, src in enumerate(srcs):
+            # robust filter
             if src is None or str(src).strip().lower() in ("", "none", "null"):
                 polyg = lidar_gdf
             else:
@@ -142,96 +109,59 @@ def reconstruct_intf_prediction(
                 all_touched=True,
                 dtype=np.uint8
             )
+
             if c == 0:
                 rasterized_polygon_current = mask_all[c].copy()
                 mask_polyg_current = polyg
 
     # -------- main reconstruction --------
-    step_y = patch_H // stride
-    step_x = patch_W // stride
-
     for i in range(ny):
+        print(i)
         for j in range(nx):
-            y0o = i * step_y; y1o = y0o + patch_H
-            x0o = j * step_x; x1o = x0o + patch_W
 
-            # paste base intensities / masks
-            if use_hann:
-                for c in range(C):
-                    intf_num[c, y0o:y1o, x0o:x1o] += data_stack[c, i, j].astype(np.float32) * Wn
-                intf_den[y0o:y1o, x0o:x1o] += Wn
-                if mask is not None:
-                    mask_num[y0o:y1o, x0o:x1o] += mask[i, j].astype(np.float32) * Wn
-                    mask_den[y0o:y1o, x0o:x1o] += Wn
-            elif use_crop:
-                Y0 = y0o + m_y0; Y1 = y0o + m_y1
-                X0 = x0o + m_x0; X1 = x0o + m_x1
-                for c in range(C):
-                    intf_acc[c, Y0:Y1, X0:X1] += data_stack[c, i, j, m_y0:m_y1, m_x0:m_x1]
-                intf_cnt[Y0:Y1, X0:X1] += 1
-                if mask is not None:
-                    mask_acc[Y0:Y1, X0:X1] += mask[i, j, m_y0:m_y1, m_x0:m_x1].astype(np.float32)
-                    mask_cnt[Y0:Y1, X0:X1] += 1
-            else:
-                for c in range(C):
-                    reconstructed_intf_all[c, y0o:y1o, x0o:x1o] += data_stack[c, i, j] / (stride**2)
-                if mask is not None:
-                    reconstructed_mask[y0o:y1o, x0o:x1o] += mask[i, j] / (stride**2)
+            y0o = i * (patch_H // stride); y1o = y0o + patch_H
+            x0o = j * (patch_W // stride); x1o = x0o + patch_W
 
-            # LiDAR gating
+            # accumulate all channels (keep your averaging)
+            for c in range(C):
+                reconstructed_intf_all[c, y0o:y1o, x0o:x1o] += data_stack[c, i, j] / (stride**2)
+
+            if reconstructed_mask is not None:
+                reconstructed_mask[y0o:y1o, x0o:x1o] += mask[i, j] / (stride**2)
+
+            # LiDAR gating: must be inside ALL time-step masks for the whole patch
             is_within_mask = True
             if add_lidar_mask and (mask_all is not None):
                 is_within_mask = mask_all[:, y0o:y1o, x0o:x1o].all()
 
-            if not is_within_mask:
-                continue
+            if is_within_mask:
+                # Build (1, C or 2C, H, W) for net and predict
+                x_np = data_stack[:, i, j]  # (C, H, W)
 
-            # build net input
-            x_np = data_stack[:, i, j]  # (C, H, W)
-            if treat_nodata_regions:
-                tol = 1e-9
-                if np.isnan(x_np).any():
-                    x_np = np.nan_to_num(x_np, nan=0.0)
-                v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)
-                x_np = np.concatenate([x_np, v_np], axis=0)  # (2C, H, W)
+                # >>> concatenate per-time validity maps to mirror training (2C input) if requested <<<
+                if treat_nodata_regions:
+                    tol = 1e-9
+                    if np.isnan(x_np).any():
+                        x_np = np.nan_to_num(x_np, nan=0.0)
+                    v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)  # (C, H, W), 1=valid, 0=no-data
+                    x_np = np.concatenate([x_np, v_np], axis=0)  # (2C, H, W)
+                # <<< end optional >>>
 
-            image = torch.from_numpy(x_np[None]).to(device=device, memory_format=torch.channels_last)
-            with torch.no_grad():
-                logits = net(image)
-                prob = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)  # (H, W)
+                image = torch.from_numpy(x_np[None]).to(device=device, memory_format=torch.channels_last)
+                with torch.no_grad():
+                    logits = net(image)
+                    prob = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)  # (H, W)
+                    pred = (prob > 0.5).astype(np.float32)
 
-            # paste predictions
-            if use_hann:
-                pred_num[y0o:y1o, x0o:x1o] += prob * Wn
-                pred_den[y0o:y1o, x0o:x1o] += Wn
-            elif use_crop:
-                Y0 = y0o + m_y0; Y1 = y0o + m_y1
-                X0 = x0o + m_x0; X1 = x0o + m_x1
-                pred_acc[Y0:Y1, X0:X1] += prob[m_y0:m_y1, m_x0:m_x1]
-                pred_cnt[Y0:Y1, X0:X1] += 1
-            else:
-                reconstructed_pred[y0o:y1o, x0o:x1o] += prob / (stride**2)
-
-    # -------- finalize / normalize --------
-    if use_hann:
-        reconstructed_intf_all = intf_num / (intf_den[None, ...] + eps)
-        reconstructed_pred     = pred_num / (pred_den + eps)
-        reconstructed_mask     = None if mask is None else (mask_num / (mask_den + eps))
-    elif use_crop:
-        reconstructed_intf_all = np.where(intf_cnt[None, ...] > 0, intf_acc / np.maximum(intf_cnt[None, ...], 1), 0)
-        reconstructed_pred     = np.where(pred_cnt > 0, pred_acc / np.maximum(pred_cnt, 1), 0)
-        reconstructed_mask     = None if mask is None else np.where(mask_cnt > 0, mask_acc / np.maximum(mask_cnt, 1), 0)
-    else:
-        # already filled in original mode
-        pass
+                reconstructed_pred[y0o:y1o, x0o:x1o] += pred / (stride**2)
 
     reconstructed_pred_th = (reconstructed_pred > rth).astype(np.float32)
     reconstructed_intf    = reconstructed_intf_all[0]
     reconstructed_prevs   = reconstructed_intf_all[1:] if C > 1 else None
 
-    # -------- optional plot --------
+    # -------- optional quick plot (overlay current LiDAR) --------
     if plot:
-        extent = [x0 + 3000*dx, x0 + 3000*dx + dx * out_w, y0 - dy * out_h, y0]
+        extent = [x0+3000*dx , x0 +3000*dx + dx * out_w, y0 - dy * out_h, y0]
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6), sharex=True, sharey=True)
         fig.subplots_adjust(wspace=0.02)
 
@@ -259,6 +189,7 @@ def reconstruct_intf_prediction(
 
         for ax in (ax1, ax2):
             ax.set_xlim(extent[0], extent[1]); ax.set_ylim(extent[2], extent[3])
+            ax.tick_params(axis='x', labelrotation=45)
         plt.tight_layout(); plt.show()
 
     if reconstructed_mask is None:
