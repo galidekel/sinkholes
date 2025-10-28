@@ -138,11 +138,11 @@ class UNet(nn.Module):
 
         # self.history_gate = HistoryGate(eps=0.1)
         #
-        # self.input_mix = nn.Sequential(
-        #     nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False),
-        #     nn.BatchNorm2d(n_channels),
-        #     nn.ReLU(inplace=True),
-        # )
+        self.input_mix = nn.Sequential(
+            nn.Conv2d(n_channels, n_channels, kernel_size=1, bias=False),
+            nn.BatchNorm2d(n_channels),
+            nn.ReLU(inplace=True),
+        )
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
