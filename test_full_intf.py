@@ -26,6 +26,7 @@ import geopandas as gpd
 import rasterio
 from rasterio.features import rasterize
 
+
 def reconstruct_intf_prediction(
     data,                   # (C, ny, nx, H, W) or (ny, nx, H, W) ; channel 0 = current
     intf_coords,            # tuple from get_intf_coords / your tuple logic
@@ -39,7 +40,10 @@ def reconstruct_intf_prediction(
     lidar_sources=None,     # list[str|None] of length C; if None -> replicate current for all
     overlay_on_preds=True,
     device=None,
-    treat_nodata_regions=False
+    treat_nodata_regions=False,
+    # ---- NEW: optional blending for predictions only ----
+    blend=None,             # None | 'hann'
+    pred_blend_dtype='float32'  # 'float32' (default) or 'float16' to save RAM
 ):
     """
     Returns (if mask is not None):
@@ -60,22 +64,36 @@ def reconstruct_intf_prediction(
         C = 1
         data_stack = data[None].astype(np.float32, copy=False)
 
-    # output sizes
+    # output sizes (original formula)
     out_h = ny * patch_H // stride + patch_H * (1 - 1 // stride)
     out_w = nx * patch_W // stride + patch_W * (1 - 1 // stride)
 
-    # accumulators
+    # --- accumulators (original for intf & mask) ---
     reconstructed_intf_all = np.zeros((C, out_h, out_w), dtype=np.float32)
-    reconstructed_pred     = np.zeros((out_h, out_w), dtype=np.float32)
-    reconstructed_mask     = None
-    if mask is not None:
-        reconstructed_mask = np.zeros((out_h, out_w), dtype=np.float32)
+    reconstructed_pred_raw = np.zeros((out_h, out_w), dtype=np.float32)  # used only when blend is None
+    reconstructed_mask     = np.zeros((out_h, out_w), dtype=np.float32) if mask is not None else None
+
+    # --- optional blending only for predictions ---
+    use_hann = (blend == 'hann')
+    if use_hann:
+        def get_hann_window(h, w):
+            wy = np.hanning(h) if h > 1 else np.ones(1, dtype=np.float32)
+            wx = np.hanning(w) if w > 1 else np.ones(1, dtype=np.float32)
+            W  = (wy[:, None] * wx[None, :]).astype(np.float32)
+            return W / (W.max() + 1e-8)
+
+        Wn = get_hann_window(patch_H, patch_W)
+        # allow reduced precision to cut RAM if needed
+        dtype_np = np.float16 if str(pred_blend_dtype).lower() == 'float16' else np.float32
+        Wn = Wn.astype(dtype_np, copy=False)
+        pred_num = np.zeros((out_h, out_w), dtype=dtype_np)
+        pred_den = np.zeros((out_h, out_w), dtype=dtype_np)
 
     # -------- LiDAR mask(s): AND across time steps --------
     rasterized_polygon_current = None  # for overlay (channel 0)
     mask_polyg_current = None
-
     mask_all = None  # (C, out_h, out_w) uint8
+
     if add_lidar_mask:
         lidar_gdf = gpd.read_file('lidar_mask_polygs.shp')
         # sources list
@@ -91,7 +109,6 @@ def reconstruct_intf_prediction(
         tr = rasterio.transform.from_origin(x0+3000*dx, y0, dx, dy)  # same grid as recon
 
         for c, src in enumerate(srcs):
-            # robust filter
             if src is None or str(src).strip().lower() in ("", "none", "null"):
                 polyg = lidar_gdf
             else:
@@ -109,20 +126,21 @@ def reconstruct_intf_prediction(
                 all_touched=True,
                 dtype=np.uint8
             )
-
             if c == 0:
                 rasterized_polygon_current = mask_all[c].copy()
                 mask_polyg_current = polyg
 
     # -------- main reconstruction --------
+    step_y = patch_H // stride
+    step_x = patch_W // stride
+
     for i in range(ny):
         print(i)
         for j in range(nx):
+            y0o = i * step_y; y1o = y0o + patch_H
+            x0o = j * step_x; x1o = x0o + patch_W
 
-            y0o = i * (patch_H // stride); y1o = y0o + patch_H
-            x0o = j * (patch_W // stride); x1o = x0o + patch_W
-
-            # accumulate all channels (keep your averaging)
+            # accumulate all channels (original averaging)
             for c in range(C):
                 reconstructed_intf_all[c, y0o:y1o, x0o:x1o] += data_stack[c, i, j] / (stride**2)
 
@@ -134,26 +152,39 @@ def reconstruct_intf_prediction(
             if add_lidar_mask and (mask_all is not None):
                 is_within_mask = mask_all[:, y0o:y1o, x0o:x1o].all()
 
-            if is_within_mask:
-                # Build (1, C or 2C, H, W) for net and predict
-                x_np = data_stack[:, i, j]  # (C, H, W)
+            if not is_within_mask:
+                continue
 
-                # >>> concatenate per-time validity maps to mirror training (2C input) if requested <<<
-                if treat_nodata_regions:
-                    tol = 1e-9
-                    if np.isnan(x_np).any():
-                        x_np = np.nan_to_num(x_np, nan=0.0)
-                    v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)  # (C, H, W), 1=valid, 0=no-data
-                    x_np = np.concatenate([x_np, v_np], axis=0)  # (2C, H, W)
-                # <<< end optional >>>
+            # Build (1, C or 2C, H, W) for net and predict
+            x_np = data_stack[:, i, j]  # (C, H, W)
 
-                image = torch.from_numpy(x_np[None]).to(device=device, memory_format=torch.channels_last)
-                with torch.no_grad():
-                    logits = net(image)
-                    prob = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)  # (H, W)
-                    pred = (prob > 0.5).astype(np.float32)
+            if treat_nodata_regions:
+                tol = 1e-9
+                if np.isnan(x_np).any():
+                    x_np = np.nan_to_num(x_np, nan=0.0)
+                v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)  # (C, H, W), 1=valid, 0=no-data
+                x_np = np.concatenate([x_np, v_np], axis=0)  # (2C, H, W)
 
-                reconstructed_pred[y0o:y1o, x0o:x1o] += pred / (stride**2)
+            image = torch.from_numpy(x_np[None]).to(device=device, memory_format=torch.channels_last)
+            with torch.no_grad():
+                logits = net(image)
+                prob = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)  # (H, W)
+
+            # --- paste predictions
+            if use_hann:
+                # blend probabilities only (no extra buffers for intf/mask)
+                pred_num[y0o:y1o, x0o:x1o] += (prob.astype(pred_blend_dtype) if pred_blend_dtype=='float16' else prob) * Wn
+                pred_den[y0o:y1o, x0o:x1o] += Wn
+            else:
+                # original accumulation
+                reconstructed_pred_raw[y0o:y1o, x0o:x1o] += prob / (stride**2)
+
+    # ---- finalize prediction map
+    if use_hann:
+        eps = 1e-8
+        reconstructed_pred = (pred_num / (pred_den + eps)).astype(np.float32)  # back to f32
+    else:
+        reconstructed_pred = reconstructed_pred_raw
 
     reconstructed_pred_th = (reconstructed_pred > rth).astype(np.float32)
     reconstructed_intf    = reconstructed_intf_all[0]
@@ -398,7 +429,8 @@ if __name__ == '__main__':
             lidar_sources=lidar_sources,
             overlay_on_preds=True,
             device=device,
-            treat_nodata_regions=args.treat_nodata_regions
+            treat_nodata_regions=args.treat_nodata_regions,
+            blend=args.blend_type
         )
 
         if mask is None:
