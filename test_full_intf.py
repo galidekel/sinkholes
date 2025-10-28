@@ -43,7 +43,9 @@ def reconstruct_intf_prediction(
     treat_nodata_regions=False,
     # ---- NEW: optional blending for predictions only ----
     blend=None,             # None | 'hann'
-    pred_blend_dtype='float32'  # 'float32' (default) or 'float16' to save RAM
+    pred_blend_dtype='float32',
+    window_gamma = 1.0,
+    blend_space = 'prob'
 ):
     """
     Returns (if mask is not None):
@@ -76,13 +78,15 @@ def reconstruct_intf_prediction(
     # --- optional blending only for predictions ---
     use_hann = (blend == 'hann')
     if use_hann:
-        def get_hann_window(h, w):
+        def get_hann_window(h, w,gamma=1.0):
             wy = np.hanning(h) if h > 1 else np.ones(1, dtype=np.float32)
             wx = np.hanning(w) if w > 1 else np.ones(1, dtype=np.float32)
             W  = (wy[:, None] * wx[None, :]).astype(np.float32)
+            if gamma != 1.0:
+                W = np.power(W, gamma, dtype=np.float32)
             return W / (W.max() + 1e-8)
 
-        Wn = get_hann_window(patch_H, patch_W)
+        Wn = get_hann_window(patch_H, patch_W,gamma=window_gamma)
         # allow reduced precision to cut RAM if needed
         dtype_np = np.float16 if str(pred_blend_dtype).lower() == 'float16' else np.float32
         Wn = Wn.astype(dtype_np, copy=False)
@@ -255,6 +259,7 @@ def get_pred_args():
     p.add_argument('--k_prevs', type=int, default=0)
     p.add_argument('--treat_nodata_regions', action='store_true')
     p.add_argument('--blend_type', type=str, default=None,choices=['hann','center-crop'])
+    p.add_argument('--window_gamma', type=float,default=1.0)
 
     return p.parse_args()
 
@@ -430,7 +435,8 @@ if __name__ == '__main__':
             overlay_on_preds=True,
             device=device,
             treat_nodata_regions=args.treat_nodata_regions,
-            blend=args.blend_type
+            blend=args.blend_type,
+            window_gamma=args.window_gamma
         )
 
         if mask is None:
