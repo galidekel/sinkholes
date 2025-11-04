@@ -208,47 +208,33 @@ def train_model(
         else:
             test_list = None
 
-        if args.retrain_with_fpz: #excluding previous run testlist intfs
-            if test_list is None:
-                logging.info('retrain mode has to have preset test list  !!')
+        test_list = ['20190504_20190515','20191210_20191221','20200613_20200624','20201115_20201126','20210326_20210406','20210510_20210521']
+        if test_list is None:
+            random.shuffle(unique_intf_list)
+            n_val = int(len(unique_intf_list)*(val_percent))
+            n_test = int(len(unique_intf_list)*(test_percent))
+            n_train = len(unique_intf_list) - n_val - n_test
+            if n_val == 0:
+                logging.info('not enough data for partitioning by interferograms !!')
                 sys.exit(0)
-
-
-            logging.info(f"excluding pre-determined test list: {test_list}")
-            tv_list = list(set(unique_intf_list) - set(test_list))
-            random.shuffle(tv_list)
-            n_val = int(len(tv_list)*(val_percent))
-            n_train = len(tv_list) - n_val
-            train_list = tv_list[:n_train]
-            val_list = tv_list[n_train:]
+            train_list = unique_intf_list[:n_train]
+            val_list = unique_intf_list[n_train:n_train+n_val]
+            test_list = unique_intf_list[n_train+n_val:]
 
         else:
-            if test_list is None:
-                random.shuffle(unique_intf_list)
-                n_val = int(len(unique_intf_list)*(val_percent))
-                n_test = int(len(unique_intf_list)*(test_percent))
-                n_train = len(unique_intf_list) - n_val - n_test
-                if n_val == 0:
-                    logging.info('not enough data for partitioning by interferograms !!')
-                    sys.exit(0)
-                train_list = unique_intf_list[:n_train]
-                val_list = unique_intf_list[n_train:n_train+n_val]
-                test_list = unique_intf_list[n_train+n_val:]
+            tv_list = list(set(unique_intf_list) - set(test_list))
+            logging.info(f' train + val sets include {len(tv_list)} intfs')
+            logging.info(f' val percent is  {val_percent}')
+            random.shuffle(tv_list)
+            n_val = int(len(tv_list) * (val_percent))
+            n_train = len(tv_list) - n_val
+            if n_val == 0:
+                logging.info('not enough data for partitioning by interferograms !!')
+                sys.exit(0)
 
-            else:
-                tv_list = list(set(unique_intf_list) - set(test_list))
-                logging.info(f' train + val sets include {len(tv_list)} intfs')
-                logging.info(f' val percent is  {val_percent}')
-                random.shuffle(tv_list)
-                n_val = int(len(tv_list) * (val_percent))
-                n_train = len(tv_list) - n_val
-                if n_val == 0:
-                    logging.info('not enough data for partitioning by interferograms !!')
-                    sys.exit(0)
-
-                train_list = tv_list[:n_train]
-                val_list = tv_list[n_train:]
-            preset_test_val_21 = True
+            train_list = tv_list[:n_train]
+            val_list = tv_list[n_train:]
+            preset_test_val_21 = False
             if preset_test_val_21:
                 val_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
                 test_list = ['20210806_20210817','20210623_20210704','20210622_20210703','20210714_20210725']
@@ -268,6 +254,8 @@ def train_model(
             train_list = ['20191129_20191210']
             test_list = ['20191129_20191210']
             val_list = ['20191129_20191210']
+
+
 
         train_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=train_list,dset = 'train',seq_dict=prev_dict)
         val_set = SubsiDataset(args,image_dir,mask_dir,intrfrgrm_list=val_list,dset = 'val',seq_dict=prev_dict)
