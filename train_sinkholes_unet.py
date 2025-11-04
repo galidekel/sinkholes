@@ -226,7 +226,7 @@ def train_model(
             logging.info(f' train + val sets include {len(tv_list)} intfs')
             logging.info(f' val percent is  {val_percent}')
             random.shuffle(tv_list)
-            n_val = int(len(tv_list) * (val_percent))
+            n_val = int(len(unique_intf_list) * (val_percent))
             n_train = len(tv_list) - n_val
             if n_val == 0:
                 logging.info('not enough data for partitioning by interferograms !!')
