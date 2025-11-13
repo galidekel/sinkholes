@@ -432,6 +432,7 @@ def train_model(
         Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
 
 
+        logging.info( 'Validation Round: {}'.format(epoch))
         val_score = evaluate(model, val_loader, device, amp, is_local=is_running_locally,out_path=str(dir_validation),epoch = epoch,save_val = args.save_val)
         scheduler.step(val_score)
 

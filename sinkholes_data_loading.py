@@ -539,7 +539,7 @@ class SubsiDataset(Dataset):
 
     def __getitem__(self, sample):
         intf_idx, patch_idx = self.index_map[sample]
-
+        logging.info('intf_idx: {}'.format(intf_idx))
         if getattr(self, "temporal", False):
             # image: [T, N, H, W] -> pick patch -> [T, H, W]
             img = self.image_data[intf_idx][:, patch_idx].astype(np.float32)
