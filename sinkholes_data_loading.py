@@ -162,6 +162,17 @@ class SubsiDataset(Dataset):
         self.image_data, self.mask_data, self.index_map = [], [], []
         test_data, test_mask_data = [], []
         for i, id in enumerate(self.ids):
+            def img_path(tid):
+                return join(self.image_dir,
+                            pref + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
+
+            def msk_path(tid):
+                return join(self.mask_dir, pref.replace("data_",
+                                                        "mask_") + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
+
+            if self.temporal:
+
+                tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present (T = k_prev+1)
 
             if args.partition_mode != 'spatial':
 
@@ -171,17 +182,6 @@ class SubsiDataset(Dataset):
                                          mask_pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(
                                              args.patch_size[1]) + '_strpp{}'.format(args.stride) + mask_suff + '.npy'))
                 if self.temporal:
-                    rc = nonz_patches_dict[id]  # [(x,y), ...] from current
-
-                    tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present (T = k_prev+1)
-
-                    def img_path(tid):
-                        return join(self.image_dir,
-                                    pref + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
-
-                    def msk_path(tid):
-                        return join(self.mask_dir, pref.replace("data_",
-                                                                "mask_") + tid + f"_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}{suff}.npy")
 
                     # load per-time images (current already in memory as image_data; same for mask_data if you have it)
                     img_pa = [image_data if tid == id else np.load(img_path(tid)).astype(np.float32) for tid in
@@ -270,17 +270,6 @@ class SubsiDataset(Dataset):
                             image_data = np.nan_to_num(image_data, nan=0.0)
                         image_data = np.concatenate([image_data, V], axis=0).astype(np.float32)  # -> (2T,N,H,W)
 
-                elif args.retrain_with_fpz:
-                    fpz_path = join(self.image_dir, 'additional_fp_patches/' + 'data_patches_fp_' + id + '.npy')
-                    if os.path.isfile(fpz_path):
-
-                        fpz_data = np.load(
-                            join(self.image_dir, 'additional_fp_patches/' + 'data_patches_fp_' + id + '.npy'))
-                        z_mask_data = np.zeros(fpz_data.shape)
-                        image_data = np.concatenate((image_data, fpz_data), axis=0)
-                        mask_data = np.concatenate((mask_data, z_mask_data), axis=0)
-                    else:
-                        logging.info('Note! No fpz patches for intf {}'.format(id))
                 elif args.nonoverlap_tr_tst:
                     if dset == 'train':
                         nz_patches, nz_masks, nz_indices = [], [], []
@@ -343,32 +332,137 @@ class SubsiDataset(Dataset):
 
             else:
 
-                stride = math.floor(args.patch_size[0] / 2) * coord_dict[id]["dy"]
-
+                # shared stride & threshold (based on current id)
+                dy = coord_dict[id]["dy"]  # constant > 0
+                stride = math.floor(args.patch_size[0] / 2) * dy
                 thresh_line = math.floor((coord_dict[id]["north"] - args.thresh_lat) / stride)
-                if thresh_line < 0:
-                    thresh_line = 0
+
+                # clamp thresh_line to this id's ny just for safety
+                ref_img = np.load(join(self.image_dir,
+                                       f"{pref}{id}_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}.npy"),
+                                  mmap_mode='r')
+                ny_id = ref_img.shape[0]
+                thresh_line = max(0, min(thresh_line, ny_id))
+
+                def _slice_first_dim(arr, tl, train_split: bool):
+                    """Clamp slice by this array's ny so tids with smaller ny don't break."""
+                    ny = arr.shape[0]
+                    if train_split:
+                        hi = min(tl, ny)  # [:tl]  -> [:min(tl, ny)]
+                        return arr[:hi]
+                    else:
+                        lo = min(tl, ny)  # [tl:]  -> [min(tl, ny):]
+                        return arr[lo:]
+
+                # ---------------- your logic with tiny changes ----------------
                 if dset == 'train':
                     image_data = np.load(join(self.image_dir,
-                                              pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(
-                                                  args.patch_size[1]) + '_strpp{}'.format(args.stride) + '.npy'))[
+                                              f"{pref}{id}_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}.npy"))[
                                  :thresh_line]
                     mask_data = np.load(join(self.mask_dir,
-                                             mask_pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(
-                                                 args.patch_size[1]) + '_strpp{}'.format(args.stride) + '.npy'))[
+                                             f"{mask_pref}{id}_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}.npy"))[
                                 :thresh_line]
+                    if self.temporal:
+                        img_pa = [image_data if tid == id else
+                                  _slice_first_dim(np.load(img_path(tid)), thresh_line, True).astype(np.float32)
+                                  for tid in tids]
+                        msk_pa = [mask_data if tid == id else
+                                  _slice_first_dim(np.load(msk_path(tid)), thresh_line, True).astype(np.float32)
+                                  for tid in tids]
                 else:
                     image_data = np.load(join(self.image_dir,
-                                              pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(
-                                                  args.patch_size[1]) + '_strpp{}'.format(args.stride) + '.npy'))[
+                                              f"{pref}{id}_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}.npy"))[
                                  thresh_line:]
                     mask_data = np.load(join(self.mask_dir,
-                                             mask_pref + id + '_H{}'.format(args.patch_size[0]) + '_W{}'.format(
-                                                 args.patch_size[1]) + '_strpp{}'.format(args.stride) + '.npy'))[
+                                             f"{mask_pref}{id}_H{args.patch_size[0]}_W{args.patch_size[1]}_strpp{args.stride}.npy"))[
                                 thresh_line:]
+                    if self.temporal:
+                        img_pa = [image_data if tid == id else
+                                  _slice_first_dim(np.load(img_path(tid)), thresh_line, False).astype(np.float32)
+                                  for tid in tids]
+                        msk_pa = [mask_data if tid == id else
+                                  _slice_first_dim(np.load(msk_path(tid)), thresh_line, False).astype(np.float32)
+                                  for tid in tids]
+
+                # keep your reshape; temporal branch will reshape/stack later anyway
                 image_data = image_data.reshape(-1, image_data.shape[2], image_data.shape[3])
                 mask_data = mask_data.reshape(-1, mask_data.shape[2], mask_data.shape[3])
-                if args.nonz_only:
+                if self.temporal:
+
+                    # # keep only patch coords valid for **all** times
+                    # rc_valid = [(x, y) for (x, y) in rc if
+                    #             all(0 <= x < p.shape[0] and 0 <= y < p.shape[1] for p in img_pa)]
+                    # ---- UNION of non-zero indices across ALL tids (current + prevs), clipped to common grid ----
+                    ny_common = min(p.shape[0] for p in img_pa)
+                    nx_common = min(p.shape[1] for p in img_pa)
+                    H, W = args.patch_size
+
+                    img_pa = [p[:ny_common, :nx_common, :H, :W] for p in img_pa]
+                    msk_pa = [p[:ny_common, :nx_common, :H, :W] for p in msk_pa]
+
+                    rc_union, seen = [], set()
+                    for tid_u in tids:
+                        for xy in nonz_patches_dict.get(tid_u, []):
+                            x, y = int(xy[0]), int(xy[1])
+                            if 0 <= x < ny_common and 0 <= y < nx_common and (x, y) not in seen:
+                                rc_union.append((x, y))
+                                seen.add((x, y))
+
+                    # Start from unioned positives
+                    rc_valid = rc_union
+                    if not rc_valid:
+                        continue
+
+                    # ---------- Ring negatives (extra all-zero patches near positives) ----------
+                    from scipy.ndimage import binary_dilation
+
+                    if getattr(args, 'add_ring_negatives', True) and dset == 'train':
+                        # 1) patch-level union mask grid across time (True where any pixel > 0 in any t)
+                        #    msk_pa: list of (ny,nx,H,W)
+                        union_grid = np.zeros((ny_common, nx_common), dtype=bool)
+                        for t in range(len(msk_pa)):
+                            union_grid |= (msk_pa[t] > 0).any(axis=(-2, -1))
+
+                        # 2) binary grid of positive patches (from rc_valid)
+                        pos_grid = np.zeros_like(union_grid, dtype=bool)
+                        for (x, y) in rc_valid:
+                            pos_grid[x, y] = True
+
+                        # 3) build an annulus around positives: (inner, outer) radii in PATCH units
+                        inner = int(getattr(args, 'neg_ring_inner', 1))  # exclude immediate neighbors
+                        outer = int(getattr(args, 'neg_ring_outer', 3))  # how far to search
+                        k_inner = np.ones((2 * inner + 1, 2 * inner + 1), dtype=bool) if inner > 0 else np.ones((1, 1),
+                                                                                                                dtype=bool)
+                        k_outer = np.ones((2 * outer + 1, 2 * outer + 1), dtype=bool)
+
+                        ring_outer = binary_dilation(pos_grid, structure=k_outer)
+                        ring_inner = binary_dilation(pos_grid, structure=k_inner) if inner > 0 else pos_grid
+                        ring = ring_outer & (~ring_inner)
+
+                        # 4) keep only ring cells that are truly ZERO in the union mask over time
+                        cand_grid = ring & (~union_grid)
+
+                        # 5) turn candidates into indices and sample
+                        cand_idx = list(zip(*np.where(cand_grid)))
+                        rng = np.random.default_rng(getattr(args, 'seed', None))
+                        neg_per_pos = float(getattr(args, 'neg_per_pos', 1.0))  # e.g., 1 negative per positive
+                        k = min(len(cand_idx), int(neg_per_pos * len(rc_valid)))
+                        rc_neg = rng.choice(cand_idx, size=k, replace=False).tolist()
+
+                        # 6) final coords = positives + sampled ring negatives
+                        rc_use = rc_valid + rc_neg
+                    else:
+                        rc_use = rc_valid
+                    # ---------------------------------------------------------------------------
+
+                    # Build (T, N, H, W) and unioned mask (N, H, W) as before
+                    patches_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in img_pa]  # each (N,H,W)
+                    image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
+
+                    masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # each (N,H,W)
+                    mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
+
+                elif args.nonz_only:
                     mask_nz, image_nz = [], []
                     for p in range(image_data.shape[0]):
                         if np.any(mask_data[p] > 0):
@@ -399,16 +493,16 @@ class SubsiDataset(Dataset):
         self.mask_values = list(sorted(np.unique(np.concatenate(unique), axis=0).tolist()))
         logging.info(f'Unique mask values: {self.mask_values}')
 
-        self.do_augmentations = (args.augment and dset == 'train')
-        if self.do_augmentations:
-            self.augment = A.Compose([
-                A.Rotate(limit=30, p=0.4),
-                A.ElasticTransform(p=0.3),
-                A.RandomBrightnessContrast(p=0.3),
-                A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
-                A.HorizontalFlip(p=0.3),
-                A.GridDistortion(p=0.2),
-            ], additional_targets={'mask': 'mask'})
+        # self.do_augmentations = (args.augment and dset == 'train')
+        # if self.do_augmentations:
+        #     self.augment = A.Compose([
+        #         A.Rotate(limit=30, p=0.4),
+        #         A.ElasticTransform(p=0.3),
+        #         A.RandomBrightnessContrast(p=0.3),
+        #         A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
+        #         A.HorizontalFlip(p=0.3),
+        #         A.GridDistortion(p=0.2),
+        #     ], additional_targets={'mask': 'mask'})
 
         logging.info(f'Created dataset: from {len(self.ids)} interferograms {len(self.index_map)} patches!!!')
 
@@ -469,16 +563,16 @@ class SubsiDataset(Dataset):
         # plt.tight_layout();
         # plt.show()
 
-        # Augment (Albumentations expects channels-last)
-        if self.do_augmentations:
-            if getattr(self, "temporal", False):
-                aug = self.augment(image=img.transpose(1, 2, 0), mask=msk)  # (H,W,T)
-                img = aug["image"].transpose(2, 0, 1)  # back to (T,H,W)
-                msk = aug["mask"]
-            else:
-                aug = self.augment(image=img, mask=msk)  # both (H,W)
-                img = aug["image"]
-                msk = aug["mask"]
+        # # Augment (Albumentations expects channels-last)
+        # if self.do_augmentations:
+        #     if getattr(self, "temporal", False):
+        #         aug = self.augment(image=img.transpose(1, 2, 0), mask=msk)  # (H,W,T)
+        #         img = aug["image"].transpose(2, 0, 1)  # back to (T,H,W)
+        #         msk = aug["mask"]
+        #     else:
+        #         aug = self.augment(image=img, mask=msk)  # both (H,W)
+        #         img = aug["image"]
+        #         msk = aug["mask"]
 
         # Sanity: spatial sizes must match
         assert img.shape[-2:] == msk.shape[-2:], \

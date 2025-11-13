@@ -154,7 +154,11 @@ def train_model(
         n2 = len(intf_list)
         logging.info('filtered list has {} nonz'.format(n2))
         logging.info('filtered by nonz threshold: removed {} intfs'.format(n1-n2))
-
+    if args.add_temporal or True:
+        with open(args.intf_dict_path, "r") as f:
+            intf_info = json.load(f)
+        prev_dict,updated_intf_list = find_11day_sequences(intf_info,k_prev=args.k_prevs, restrict_to=intf_list)
+        intf_list = updated_intf_list
     if args.partition_mode == 'random_by_patch':
         logging.info('Creating Dataset: Randlomly partitioning by patches')
 
@@ -195,11 +199,6 @@ def train_model(
         logging.info('Creating Dataset: Randomly partitioning by Interferograms !!!')
         unique_intf_list = intf_list
         prev_dict=None
-        if args.add_temporal or True:
-            with open(args.intf_dict_path, "r") as f:
-                intf_info = json.load(f)
-            prev_dict,updated_intf_list = find_11day_sequences(intf_info,k_prev=args.k_prevs, restrict_to=unique_intf_list)
-            unique_intf_list = updated_intf_list
 
         if args.test_data_to_exclude is not None:
             with open(args.test_data_to_exclude, 'rb') as file:
@@ -292,8 +291,10 @@ def train_model(
 
     elif args.partition_mode == 'spatial':
         logging.info('Creating Dataset: by spatial partitioning !!!')
-        train_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'train',augment = args.augment)
-        valtmp_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'val')
+        if is_running_locally:
+            intf_list = ['20191129_20191210']
+        train_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'train',augment = args.augment,seq_dict=prev_dict)
+        valtmp_set = SubsiDataset(args,image_dir,mask_dir,intf_list, dset = 'val',seq_dict=prev_dict)
         n_train = len(train_set)
         n_valtmp = len(valtmp_set)
         n_val = n_valtmp//2
@@ -468,7 +469,7 @@ def get_args():
     parser.add_argument('--partition_mode', type=str, default='random_by_patch', choices=['random_by_patch', 'random_by_intf','spatial','preset_by_intf'], help='partition mode')
     parser.add_argument('--partition_file', type=str, default='partition_20_05_13h45.json', help=('preset partition file'))
 
-    parser.add_argument('--train_on_11d_diff', type = str, default='True', help='train only on non zero mask patches')
+    parser.add_argument('--train_on_11d_diff', type = str, default='True', help='')
     parser.add_argument('--job_name', type = str, default='', help='job name to add to output files')
     parser.add_argument('--intf_dict_path', type=str, default='./intf_coord.json', help='path to interferograms coord dict')
     parser.add_argument('--thresh_lat', type=float, default=31.4)
