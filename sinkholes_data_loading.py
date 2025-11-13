@@ -126,6 +126,7 @@ class SubsiDataset(Dataset):
             assert intrfrgrm_list is not None, "Partition mode 'preset by intf' requires an input intrfrgrm list"
         self.scale = scale
         self.mask_suffix = mask_suffix
+        self.dataset = dset
         if args.add_temporal:
             self.temporal = True
             with open(image_dir + '/' + 'nonz_indices.json', "r") as f:
@@ -400,13 +401,26 @@ class SubsiDataset(Dataset):
                     img_pa = [p[:ny_common, :nx_common, :H, :W] for p in img_pa]
                     msk_pa = [p[:ny_common, :nx_common, :H, :W] for p in msk_pa]
 
+                    if dset == 'train':
+                        row_offset = {tid: 0 for tid in tids}
+                    else:
+                        # we need each tid's original ny to clamp min(thresh_line, ny_tid)
+                        def _ny_of_tid(tid):
+                            return np.load(img_path(tid), mmap_mode='r').shape[0]  # (ny, nx, H, W)
+
+                        row_offset = {tid: min(thresh_line, _ny_of_tid(tid)) for tid in tids}
+
+                    # ... after you computed ny_common, nx_common and before rc_union loop ...
+
                     rc_union, seen = [], set()
                     for tid_u in tids:
+                        off = row_offset[tid_u]
                         for xy in nonz_patches_dict.get(tid_u, []):
-                            x, y = int(xy[0]), int(xy[1])
-                            if 0 <= x < ny_common and 0 <= y < nx_common and (x, y) not in seen:
-                                rc_union.append((x, y))
-                                seen.add((x, y))
+                            x_glob, y = int(xy[0]), int(xy[1])
+                            x_loc = x_glob - off  # <-- convert global row to local (post-slice) row
+                            if 0 <= x_loc < ny_common and 0 <= y < nx_common and (x_loc, y) not in seen:
+                                rc_union.append((x_loc, y))
+                                seen.add((x_loc, y))
 
                     # Start from unioned positives
                     rc_valid = rc_union
@@ -539,14 +553,12 @@ class SubsiDataset(Dataset):
 
     def __getitem__(self, sample):
         intf_idx, patch_idx = self.index_map[sample]
-        logging.info('intf_idx: {}'.format(intf_idx))
         if getattr(self, "temporal", False):
             # image: [T, N, H, W] -> pick patch -> [T, H, W]
             img = self.image_data[intf_idx][:, patch_idx].astype(np.float32)
             # mask:  [1, N, H, W] -> pick patch & drop singleton -> [H, W]
             msk = self.mask_data[intf_idx][0, patch_idx].astype(np.float32)
             # plot_temporal_patch_with_mask(img, msk, cmap='jet')
-
         else:
             # image/mask stored as [1, N, H, W] -> pick channel 0 & patch -> [H, W]
             img = self.image_data[intf_idx][0, patch_idx].astype(np.float32)
@@ -555,13 +567,14 @@ class SubsiDataset(Dataset):
         # Preprocess
         img = self.preprocess(self.mask_values, img, 0)  # keeps shape; (T,H,W) or (H,W)
         msk = self.preprocess(self.mask_values, msk, 1)  # -> (H,W) labels
-        T = img.shape[0];
-        # fig, ax = plt.subplots(1, T + 1, figsize=(2 * (T + 1), 2))
-        # for i in range(T): ax[i].imshow(img[i], cmap='gray'); ax[i].axis('off')
-        # ax[-1].imshow(msk, cmap='Reds');
-        # ax[-1].axis('off');
-        # plt.tight_layout();
-        # plt.show()
+        # if self.dataset != 'train':
+        #     T = img.shape[0];
+        #     fig, ax = plt.subplots(1, T + 1, figsize=(2 * (T + 1), 2))
+        #     for i in range(T): ax[i].imshow(img[i], cmap='jet'); ax[i].axis('off')
+        #     ax[-1].imshow(msk);
+        #     ax[-1].axis('off');
+        #     plt.tight_layout();
+        #     plt.show()
 
         # # Augment (Albumentations expects channels-last)
         # if self.do_augmentations:
