@@ -198,7 +198,7 @@ def train_model(
     elif args.partition_mode == 'random_by_intf':
         logging.info('Creating Dataset: Randomly partitioning by Interferograms !!!')
         unique_intf_list = intf_list
-        prev_dict=None
+
 
         if args.test_data_to_exclude is not None:
             with open(args.test_data_to_exclude, 'rb') as file:
@@ -248,7 +248,7 @@ def train_model(
                 logging.info(f' test interferograms: {test_list}')
                 logging.info(f'val interferograms: {val_list}')
                 logging.info(f'train interferograms: {train_list}')
-        if is_running_locally:
+        if is_running_locally and False:
             train_list = ['20191129_20191210']
             test_list = ['20191129_20191210']
             val_list = ['20191129_20191210']
