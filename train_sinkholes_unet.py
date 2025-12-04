@@ -233,8 +233,7 @@ def train_model(
 
             train_list = tv_list[:n_train]
             val_list = tv_list[n_train:]
-            preset_test_val_21 = False
-            if preset_test_val_21:
+            if args.preset_test_val_21:
                 val_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
                 test_list = ['20210806_20210817','20210623_20210704','20210622_20210703','20210714_20210725']
 
@@ -469,6 +468,7 @@ def get_args():
     parser.add_argument('--patches_dir', type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='path to patches')
     parser.add_argument('--partition_mode', type=str, default='random_by_patch', choices=['random_by_patch', 'random_by_intf','spatial','preset_by_intf'], help='partition mode')
     parser.add_argument('--partition_file', type=str, default='partition_20_05_13h45.json', help=('preset partition file'))
+    parser.add_argument('--preset_test_val_21',action='store_true', help='train on 19,20 test on 21')
 
     parser.add_argument('--train_on_11d_diff', type = str, default='True', help='')
     parser.add_argument('--job_name', type = str, default='', help='job name to add to output files')
