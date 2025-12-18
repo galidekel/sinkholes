@@ -7,11 +7,13 @@
 import argparse
 import os
 import sys
-from unet import *
+# Use QtAgg explicitly to support interactive plotting with PyQt6
+import matplotlib
+matplotlib.use('QtAgg')
+import matplotlib.pyplot as plt
 import torch
 import logging
 import numpy as np
-import matplotlib.pyplot as plt
 import rasterio
 import rasterio.warp
 import rasterio.features
@@ -20,6 +22,7 @@ from skimage.util import view_as_windows
 from logging.handlers import TimedRotatingFileHandler
 from numba import njit, prange
 from alive_progress import alive_bar
+from unet import *
 
 _LOG_LEVEL_STRINGS = ['CRITICAL', 'ERROR', 'WARNING', 'INFO', 'DEBUG']
 formatter = logging.Formatter(fmt='%(asctime)s.%(msecs)03d | %(name)s | %(levelname)s | %(message)s',
@@ -516,7 +519,6 @@ def set_logger(log, verbose=VERBOSE, log_level=LOG_LEVEL, logfile=LOG_FILE):
 
 
 if __name__ == '__main__':
-    plt.switch_backend('Qt5Agg')
     args = parser.parse_args()
     if not args.memtest and not args.interferograms:
         parser.error("the following arguments are required: interferograms (unless --memtest is specified)")

@@ -1,6 +1,6 @@
 import torch
 from unet_parts import *
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 
 class UNet(nn.Module):
