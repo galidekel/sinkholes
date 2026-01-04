@@ -513,7 +513,7 @@ class SubsiDataset(Dataset):
         #         A.Rotate(limit=30, p=0.4),
         #         A.ElasticTransform(p=0.3),
         #         A.RandomBrightnessContrast(p=0.3),
-        #         A.GaussNoise(var_limit=(10.0, 50.0), p=0.3),
+        #         A.GaussNoise(var_limit=(0.1, 0.2), p=0.3),
         #         A.HorizontalFlip(p=0.3),
         #         A.GridDistortion(p=0.2),
         #     ], additional_targets={'mask': 'mask'})
@@ -559,6 +559,10 @@ class SubsiDataset(Dataset):
             # mask:  [1, N, H, W] -> pick patch & drop singleton -> [H, W]
             msk = self.mask_data[intf_idx][0, patch_idx].astype(np.float32)
             # plot_temporal_patch_with_mask(img, msk, cmap='jet')
+            plot_temporal_patch_with_mask(
+                img,
+                msk
+            )
         else:
             # image/mask stored as [1, N, H, W] -> pick channel 0 & patch -> [H, W]
             img = self.image_data[intf_idx][0, patch_idx].astype(np.float32)
