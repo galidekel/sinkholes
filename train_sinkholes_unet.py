@@ -248,7 +248,7 @@ def train_model(
                 logging.info(f' test interferograms: {test_list}')
                 logging.info(f'val interferograms: {val_list}')
                 logging.info(f'train interferograms: {train_list}')
-        if is_running_locally and False:
+        if is_running_locally and True:
             train_list = ['20191129_20191210']
             test_list = ['20191129_20191210']
             val_list = ['20191129_20191210']

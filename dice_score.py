@@ -1,11 +1,14 @@
 import torch
 from torch import Tensor
+import matplotlib.pyplot as plt
 
 
-def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, epsilon: float = 1e-6):
+def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, epsilon: float = 1e-6,plot = False):
     # Average of Dice coefficient for all batches, or for a single mask
     assert input.size() == target.size()
     assert input.dim() == 3 or not reduce_batch_first
+    if input.dim() == 4:
+        plot = False
 
     sum_dim = (-1, -2) if input.dim() == 2 or not reduce_batch_first else (-1, -2, -3)
 
@@ -14,6 +17,21 @@ def dice_coeff(input: Tensor, target: Tensor, reduce_batch_first: bool = False, 
     sets_sum = torch.where(sets_sum == 0, inter, sets_sum)
 
     dice = (inter + epsilon) / (sets_sum + epsilon)
+    if plot:
+        fig, axes = plt.subplots(2,1,sharex=True,sharey=True)
+        axes[0].imshow(input[0,0])
+        axes[0].set_title("Input")
+
+        axes[1].imshow(target[0,0])
+        axes[1].set_title('target')
+        fig.text(
+            0.5, 0.05, "dice is {:.4f}".format(dice.mean() ),
+            ha='center', fontsize=14,
+            bbox=dict(facecolor='red', alpha=0.3)
+        )
+        plt.show()
+
+
     return dice.mean()
 
 

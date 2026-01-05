@@ -1,4 +1,4 @@
-
+import argparse
 import json
 def get_intf_coords(intf_name):
     intf_dict_file = open('intf_coord.json', 'r')
@@ -323,7 +323,9 @@ def find_11day_sequences(
     return chains_map, valid_intfs
 
 if __name__ == '__main__':
-    intf = '20190730_20190810'
-    mask = get_intf_lidar_mask(intf)
-    print(mask)
-###
+
+    with open ('intf_coord.json', 'r') as f:
+        info = json.load(f)
+    intf_list =  ['20210120_20210131', '20210222_20210305', '20210119_20210130', '20210210_20210221']
+    p_dict, upt_list = find_11day_sequences(info,restrict_to=intf_list)
+    print(p_dict)
