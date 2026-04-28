@@ -207,7 +207,7 @@ def train_model(
         else:
             test_list = None
 
-        test_list = ['20190504_20190515','20191210_20191221','20200613_20200624','20201115_20201126','20210326_20210406','20210510_20210521']
+        # test_list = ['20190504_20190515','20191210_20191221','20200613_20200624','20201115_20201126','20210326_20210406','20210510_20210521']
         if test_list is None:
             random.shuffle(unique_intf_list)
             n_val = int(len(unique_intf_list)*(val_percent))
@@ -239,11 +239,11 @@ def train_model(
 
 
                 train_list = list(set(unique_intf_list) - set(test_list)-set(val_list))
-                tmp_train_list = []
-                for intf in train_list:
-                    if intf[:4] != '2021':
-                        tmp_train_list.append(intf)
-                train_list = tmp_train_list
+                # tmp_train_list = []
+                # for intf in train_list:
+                #     if intf[:4] != '2021':
+                #         tmp_train_list.append(intf)
+                # train_list = tmp_train_list
 
                 logging.info(f' test interferograms: {test_list}')
                 logging.info(f'val interferograms: {val_list}')
@@ -269,9 +269,9 @@ def train_model(
         if (set(train_set.ids)).isdisjoint(set(test_set.ids)):
             logging.info('no commom train test intfs')
 
-### uncomment back!!!
-        # assert set(train_set.ids).isdisjoint(set(val_set.ids)) and set(train_set.ids).isdisjoint(set(test_set.ids)) and set(val_set.ids).isdisjoint(
-        #     set(test_set.ids)), 'there are common intfs in lists!'
+
+        assert set(train_set.ids).isdisjoint(set(val_set.ids)) and set(train_set.ids).isdisjoint(set(test_set.ids)) and set(val_set.ids).isdisjoint(
+            set(test_set.ids)), 'there are common intfs in lists!'
 
         logging.info('train val and test sets have {}, {}, {} samples'.format(len(train_set), len(val_set), len(test_set)))
         buffer = io.BytesIO()
