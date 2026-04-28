@@ -559,10 +559,10 @@ class SubsiDataset(Dataset):
             # mask:  [1, N, H, W] -> pick patch & drop singleton -> [H, W]
             msk = self.mask_data[intf_idx][0, patch_idx].astype(np.float32)
             # plot_temporal_patch_with_mask(img, msk, cmap='jet')
-            plot_temporal_patch_with_mask(
-                img,
-                msk
-            )
+            # plot_temporal_patch_with_mask(
+            #     img,
+            #     msk
+            # )
         else:
             # image/mask stored as [1, N, H, W] -> pick channel 0 & patch -> [H, W]
             img = self.image_data[intf_idx][0, patch_idx].astype(np.float32)
