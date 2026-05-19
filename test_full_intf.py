@@ -476,12 +476,12 @@ if __name__ == '__main__':
             # out == (reconstructed_intf_all, reconstructed_mask, reconstructed_pred_th, reconstructed_pred, reconstructed_prevs)
             # we already have the full stack from the function
             image_to_save = reconstructed_intf_all.astype(np.float32)  # (C,H,W)
-
-        np.save(prefix + '_image', image_to_save)  # <-- shape (k_prevs+1, H, W)
-        np.save(prefix + '_pred_th', reconstructed_pred_th)
-        np.save(prefix + '_pred', reconstructed_pred)
-        if reconstructed_mask is not None:
-            np.save(prefix + '_gt', reconstructed_mask)
+        if args.intf_source != 'all':
+            np.save(prefix + '_image', image_to_save)  # <-- shape (k_prevs+1, H, W)
+            np.save(prefix + '_pred_th', reconstructed_pred_th)
+            np.save(prefix + '_pred', reconstructed_pred)
+            if reconstructed_mask is not None:
+                np.save(prefix + '_gt', reconstructed_mask)
 
         # quick panel plot (optional)
         if args.plot:
