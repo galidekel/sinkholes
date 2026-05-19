@@ -300,6 +300,8 @@ if __name__ == '__main__':
         with open(args.valset_from_partition, 'r') as f:
             loaded = json.load(f)
         intf_list = loaded['val']
+    elif args.intf_source == 'all':
+        intf_list = []  # populated below after data_dir is constructed
     else:
         with open('./test_data/' + args.test_dataset, 'rb') as f:
             test_data = pickle.load(f)
@@ -332,6 +334,11 @@ if __name__ == '__main__':
         f'mask_patches_H{patch_H}_W{patch_W}_strpp{args.data_stride}'
         f'_{args.days_diff}days' + ('_22_23' if args.years_22_23 else '') + '_Aligned'
     )
+
+    if args.intf_source == 'all':
+        intf_list = sorted(set(
+            f[13:30] for f in os.listdir(data_dir) if f.endswith('.npy')
+        ))
 
     # prev sequences
     prev_dict = None
