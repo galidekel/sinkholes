@@ -347,6 +347,11 @@ if __name__ == '__main__':
             intf_info = json.load(f)
         prev_dict, updated = find_11day_sequences(intf_info, k_prev=args.k_prevs, restrict_to=intf_list)
         intf_list = updated
+        if args.years_22_23:
+            intf_list = [
+                k for k in intf_list
+                if all(p.startswith('2022') for p in prev_dict[k]['prevs'])
+            ]
 
     tol = 1e-3  # normalization tolerance
 
