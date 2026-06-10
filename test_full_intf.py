@@ -110,7 +110,7 @@ def reconstruct_intf_prediction(
                 srcs = [current_lidar_mask] * C
 
         mask_all = np.zeros((C, out_h, out_w), dtype=np.uint8)
-        tr = rasterio.transform.from_origin(x0+3000*dx, y0, dx, dy)  # same grid as recon
+        tr = rasterio.transform.from_origin(x0, y0, dx, dy)
 
         for c, src in enumerate(srcs):
             if src is None or str(src).strip().lower() in ("", "none", "null"):
@@ -196,7 +196,7 @@ def reconstruct_intf_prediction(
 
     # -------- optional quick plot (overlay current LiDAR) --------
     if plot:
-        extent = [x0+3000*dx , x0 +3000*dx + dx * out_w, y0 - dy * out_h, y0]
+        extent = [x0, x0 + dx * out_w, y0 - dy * out_h, y0]
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6), sharex=True, sharey=True)
         fig.subplots_adjust(wspace=0.02)
 
@@ -285,6 +285,7 @@ if __name__ == '__main__':
     log_file = os.path.join(output_path, f"{args.job_name}_{now}.log")
     logging.getLogger().addHandler(logging.FileHandler(log_file))
 
+    logging.info(f'Script: {os.path.abspath(__file__)}')
     logging.info('Running job {} with model {}.pth and args: {}'.format(job_name, model_name, args))
 
     # choose interferograms list
@@ -350,7 +351,7 @@ if __name__ == '__main__':
         if args.years_22_23:
             intf_list = [
                 k for k in intf_list
-                if all(p.startswith('2022') for p in prev_dict[k]['prevs'])
+                if all(p.startswith('2022') or p.startswith('2023') for p in prev_dict[k]['prevs'])
             ]
 
     tol = 1e-3  # normalization tolerance
@@ -460,8 +461,10 @@ if __name__ == '__main__':
             reconstructed_intf = reconstructed_intf_all[0]
 
         # polygons from predicted threshold
+        # x0_ is the aligned frame origin (35.3 N / 35.25 S), matching prepare_intrfrgrm_pathches.py
         x0_, y0_, dx_, dy_, *_ = intfs_coords
-        polygons = plg_indx2longlat(mask_array_to_polygons(reconstructed_pred_th), intfs_coords)
+        polygons = plg_indx2longlat(mask_array_to_polygons(reconstructed_pred_th), intfs_coords,
+                                    x_start=x0_)
         shp_path = os.path.join(output_polyg_dir, f'{intf}_predicted_polygs.shp')
         polygons.to_file(shp_path)
 
