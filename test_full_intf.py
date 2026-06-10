@@ -355,9 +355,9 @@ if __name__ == '__main__':
 
         # align starts by frame (as in your original)
         if ic[11] == 'North':
-            intfs_coords = (35.3, 31.79) + ic[2:]
+            intfs_coords = (35.37, 31.79) + ic[2:]
         else:
-            intfs_coords = (35.25, 31.44) + ic[2:]
+            intfs_coords = (35.32, 31.44) + ic[2:]
 
         # file paths
         data_fn = f'data_patches_{intf}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'
