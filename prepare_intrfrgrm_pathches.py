@@ -92,11 +92,10 @@ def get_args():
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--strides_per_patch',type=int, default=2, help='strides per patch - 2 means half a window stride, 4 means quarter a window stride etc')
-    parser.add_argument('--intf_22_23',  type=str, default='False')
     parser.add_argument('--align_frames',  action='store_true', default=True)
     parser.add_argument('--days_diff',  type=int, default=11)
-    parser.add_argument('--x0_N', type=float, default=35.3)
-    parser.add_argument('--x0_S', type=float, default=35.25)
+    parser.add_argument('--x0_N', type=float, default=35.37)
+    parser.add_argument('--x0_S', type=float, default=35.32)
     parser.add_argument('--offset_x', type=int, default=0)
     parser.add_argument('--nx',type=int,default=4500)
     return parser.parse_args()
@@ -104,8 +103,6 @@ def get_args():
 if __name__ == '__main__':
     args = get_args()
     req_days_diff = args.days_diff
-    args.intf_22_23 = str2bool(args.intf_22_23)
-
     gdf = gpd.read_file(args.gt_polygon_file_path)
     patch_size = tuple(args.patch_size)
     patch_H, patch_W = patch_size
@@ -113,14 +110,12 @@ if __name__ == '__main__':
         args.output_dir
         + f"data_patches_H{patch_H}_W{patch_W}_strpp{args.strides_per_patch}"
         + (f"_{req_days_diff}days")
-        + ('_22_23' if args.intf_22_23 else '')
         + ('_Aligned' if args.align_frames else '')
     )
     mask_output_dir = (
         args.output_dir
         + f"mask_patches_H{patch_H}_W{patch_W}_strpp{args.strides_per_patch}"
         + (f"_{req_days_diff}days")
-        + ('_22_23' if args.intf_22_23 else '')
         + ('_Aligned' if args.align_frames else '')
     )
 
@@ -155,10 +150,7 @@ if __name__ == '__main__':
         start_datetime = datetime.strptime(start_date,"%Y-%m-%d")
         end_datetime = datetime.strptime(end_date,"%Y-%m-%d")
         days_diff = (end_datetime - start_datetime).days
-        if args.intf_22_23:
-            if days_diff != req_days_diff or end_datetime.year < 2022:
-                continue
-        elif days_diff != req_days_diff or start_datetime.year > 2021:
+        if days_diff != req_days_diff:
             continue
 
         intf_mdata = get_intf_coords(intfrgrm_name)
