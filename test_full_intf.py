@@ -254,7 +254,6 @@ def get_pred_args():
     p.add_argument('--add_lidar_mask', type=str, default='True')
     p.add_argument('--plot', action='store_true')
     p.add_argument('--attn_unet', action='store_true')
-    p.add_argument('--years_22_23', action='store_true')
     p.add_argument('--unioned_mask', action='store_true')
     p.add_argument('--k_prevs', type=int, default=0)
     p.add_argument('--treat_nodata_regions', action='store_true')
@@ -328,12 +327,12 @@ if __name__ == '__main__':
     data_dir = os.path.join(
         args.input_patch_dir,
         f'data_patches_H{patch_H}_W{patch_W}_strpp{args.data_stride}'
-        f'_{args.days_diff}days' + ('_22_23' if args.years_22_23 else '') + '_Aligned'
+        f'_{args.days_diff}days_Aligned'
     )
     mask_dir = os.path.join(
         args.input_patch_dir,
         f'mask_patches_H{patch_H}_W{patch_W}_strpp{args.data_stride}'
-        f'_{args.days_diff}days' + ('_22_23' if args.years_22_23 else '') + '_Aligned'
+        f'_{args.days_diff}days_Aligned'
     )
 
     if args.intf_source == 'all':
@@ -348,11 +347,6 @@ if __name__ == '__main__':
             intf_info = json.load(f)
         prev_dict, updated = find_11day_sequences(intf_info, k_prev=args.k_prevs, restrict_to=intf_list)
         intf_list = updated
-        if args.years_22_23:
-            intf_list = [
-                k for k in intf_list
-                if all(p.startswith('2022') or p.startswith('2023') for p in prev_dict[k]['prevs'])
-            ]
 
     tol = 1e-3  # normalization tolerance
 
