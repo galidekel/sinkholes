@@ -23,12 +23,17 @@ def mask_array_to_polygons(mask_array):
     polygons_gpd = gpd.GeoDataFrame(geometry=shapely_polygons,crs="EPSG:4326")
     return polygons_gpd
 
-def plg_indx2longlat(polyg_gdf, intf_coords):
-    x4000, y0, dx, dy = intf_coords[6], intf_coords[1], intf_coords[2], intf_coords[3]
+def plg_indx2longlat(polyg_gdf, intf_coords, x_start=None):
+    # x_start: geographic longitude of reconstruction pixel column 0.
+    # Should be x0_frame + offset_x*dx (e.g. 35.25 + 3000*dx for South).
+    # Falls back to intf_coords[6] (x4000) for legacy callers.
+    if x_start is None:
+        x_start = intf_coords[6]
+    y0, dx, dy = intf_coords[1], intf_coords[2], intf_coords[3]
     polyg_list = polyg_gdf['geometry'].tolist()
     polyg_longlat = []
     for polyg in polyg_list:
-        new_coords = [(x4000 + x * dx, y0 - y * dy) for x, y in polyg.exterior.coords]
+        new_coords = [(x_start + x * dx, y0 - y * dy) for x, y in polyg.exterior.coords]
         polyg = Polygon(new_coords)
         polyg_longlat.append(polyg)
 
