@@ -343,6 +343,7 @@ if __name__ == '__main__':
         yr0, yr1 = args.year_range
         intf_list = sorted(set(
             f[13:30] for f in os.listdir(data_dir) if f.endswith('.npy')
+            and 'nonz' not in f
             and yr0 <= int(f[13:17]) <= yr1
         ))
         logging.info(f'Year range {yr0}-{yr1}: found {len(intf_list)} interferograms')
