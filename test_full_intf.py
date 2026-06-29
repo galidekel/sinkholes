@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-import os, sys, json, pickle, logging
+import os, sys, json, pickle, logging, glob
 from datetime import datetime
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import geopandas as gpd
 import rasterio
@@ -259,6 +260,9 @@ def get_pred_args():
     p.add_argument('--treat_nodata_regions', action='store_true')
     p.add_argument('--blend_type', type=str, default=None,choices=['hann','center-crop'])
     p.add_argument('--window_gamma', type=float,default=1.0)
+    p.add_argument('--year_range', nargs=2, type=int, default=[2019, 2023],
+                   metavar=('YEAR_START', 'YEAR_END'),
+                   help='Filter intfs to this year range (inclusive) when --intf_source all')
 
     return p.parse_args()
 
@@ -336,9 +340,12 @@ if __name__ == '__main__':
     )
 
     if args.intf_source == 'all':
+        yr0, yr1 = args.year_range
         intf_list = sorted(set(
             f[13:30] for f in os.listdir(data_dir) if f.endswith('.npy')
+            and yr0 <= int(f[13:17]) <= yr1
         ))
+        logging.info(f'Year range {yr0}-{yr1}: found {len(intf_list)} interferograms')
 
     # prev sequences
     prev_dict = None
@@ -507,4 +514,35 @@ if __name__ == '__main__':
             axes[col].imshow(reconstructed_pred_th, extent=extent, cmap='binary', vmin=0, vmax=1); axes[col].set_title('Pred mask')
 
             plt.tight_layout(); plt.show()
+
+    # ── merge all per-intf shapefiles into one combined shapefile ──────────────
+    with open('intf_coord.json') as _f:
+        _intf_info = json.load(_f)
+
+    _shp_files = sorted(glob.glob(os.path.join(output_polyg_dir, '*.shp')))
+    logging.info(f'Merging {len(_shp_files)} per-intf shapefiles into combined output')
+    _gdfs = []
+    for _shp in _shp_files:
+        _gdf = gpd.read_file(_shp)
+        if _gdf.empty:
+            continue
+        _key = os.path.basename(_shp)[:17]          # YYYYMMDD_YYYYMMDD
+        _info = _intf_info.get(_key, {})
+        _frame = _info.get('frame', '')
+        _track = 'asc' if _frame == 'North' else ('desc' if _frame == 'South' else None)
+        _gdf['intf_key']   = _key
+        _gdf['start_date'] = _key[:8]
+        _gdf['end_date']   = _key[9:]
+        _gdf['track']      = _track
+        _gdfs.append(_gdf)
+
+    if _gdfs:
+        _combined = gpd.GeoDataFrame(pd.concat(_gdfs, ignore_index=True), crs=_gdfs[0].crs)
+        _combined = _combined[_combined.geometry.notna() & ~_combined.geometry.is_empty]
+        yr0, yr1 = args.year_range
+        _combined_path = os.path.join(output_path, f'{model_name}_{yr0}_{yr1}_combined.shp')
+        _combined.to_file(_combined_path)
+        logging.info(f'Combined shapefile → {_combined_path} ({len(_combined)} polygons, {_combined["intf_key"].nunique()} intfs)')
+    else:
+        logging.warning('No shapefiles found to merge — combined output skipped')
 
