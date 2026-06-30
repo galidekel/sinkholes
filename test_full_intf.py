@@ -353,7 +353,7 @@ if __name__ == '__main__':
     if args.k_prevs > 0:
         with open('intf_coord.json', "r") as f:
             intf_info = json.load(f)
-        prev_dict, updated = find_11day_sequences(intf_info, k_prev=args.k_prevs, restrict_to=intf_list)
+        prev_dict, updated = find_11day_sequences(intf_info, k_prev=args.k_prevs, restrict_to=intf_list, require_current_nonz_gt0=False)
         intf_list = updated
 
     tol = 1e-3  # normalization tolerance
