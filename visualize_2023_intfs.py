@@ -32,9 +32,13 @@ lon_min = FloatText(value=35.35, description="Lon min:", step=0.001, layout={"wi
 lon_max = FloatText(value=35.45, description="Lon max:", step=0.001, layout={"width": "200px"})
 lat_min = FloatText(value=31.38, description="Lat min:", step=0.001, layout={"width": "200px"})
 lat_max = FloatText(value=31.47, description="Lat max:", step=0.001, layout={"width": "200px"})
-btn     = Button(description="Apply region", button_style="primary")
-btn_prev = Button(description="◀ Prev", layout={"width": "80px"})
-btn_next = Button(description="Next ▶", layout={"width": "80px"})
+btn       = Button(description="Apply region", button_style="primary")
+btn_reset = Button(description="Reset region", button_style="warning")
+btn_prev  = Button(description="◀ Prev", layout={"width": "80px"})
+btn_next  = Button(description="Next ▶", layout={"width": "80px"})
+
+DEFAULT_LON_MIN, DEFAULT_LON_MAX = 35.35, 35.45
+DEFAULT_LAT_MIN, DEFAULT_LAT_MAX = 31.38, 31.47
 
 def draw(intf_key=None, x0_crop=None, x1_crop=None, y0_crop=None, y1_crop=None):
     ax.cla()
@@ -90,14 +94,22 @@ def on_next(b):
     idx = intfs_2023.index(dd.value)
     dd.value = intfs_2023[(idx + 1) % len(intfs_2023)]
 
+def on_reset(b):
+    lon_min.value = DEFAULT_LON_MIN
+    lon_max.value = DEFAULT_LON_MAX
+    lat_min.value = DEFAULT_LAT_MIN
+    lat_max.value = DEFAULT_LAT_MAX
+    draw()
+
 dd.observe(on_intf_change)
 btn.on_click(on_btn_click)
 btn_prev.on_click(on_prev)
 btn_next.on_click(on_next)
+btn_reset.on_click(on_reset)
 
 controls = VBox([
     HBox([btn_prev, dd, btn_next]),
-    HBox([Label("Region:"), lon_min, lon_max, lat_min, lat_max, btn])
+    HBox([Label("Region:"), lon_min, lon_max, lat_min, lat_max, btn, btn_reset])
 ])
 display(VBox([controls, fig.canvas]))
 draw()
