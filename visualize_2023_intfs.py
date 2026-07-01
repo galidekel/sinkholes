@@ -2,7 +2,7 @@ import numpy as np
 import glob, json, os
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from ipywidgets import Dropdown, VBox
+from ipywidgets import Dropdown, FloatText, Button, HBox, VBox, Label
 from IPython.display import display
 
 INTF_DIR   = "/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data"
@@ -27,26 +27,26 @@ def find_unw(intf_key):
 fig, ax = plt.subplots(figsize=(10, 8))
 plt.tight_layout()
 
-def draw(intf_key):
+dd   = Dropdown(options=intfs_2023, description="Intf:")
+lon_min = FloatText(value=35.35, description="Lon min:", step=0.001, layout={"width": "200px"})
+lon_max = FloatText(value=35.45, description="Lon max:", step=0.001, layout={"width": "200px"})
+lat_min = FloatText(value=31.38, description="Lat min:", step=0.001, layout={"width": "200px"})
+lat_max = FloatText(value=31.47, description="Lat max:", step=0.001, layout={"width": "200px"})
+btn     = Button(description="Apply region", button_style="primary")
+
+def draw(intf_key=None, x0_crop=None, x1_crop=None, y0_crop=None, y1_crop=None):
     ax.cla()
+    if intf_key is None:
+        intf_key = dd.value
+    if x0_crop is None:
+        x0_crop, x1_crop = lon_min.value, lon_max.value
+        y0_crop, y1_crop = lat_min.value, lat_max.value
+
     info = intf_info.get(intf_key, {})
     north, east = info["north"], info["east"]
     dx, dy = info["dx"], info["dy"]
     nlines, ncells = info["nlines"], info["ncells"]
     bo = info.get("byte_order", "LSBFirst")
-    extent = [east, east + ncells*dx, north - nlines*dy, north]
-
-    polygs = gdf_all[gdf_all["intf_key"] == intf_key]
-
-    if not polygs.empty:
-        minx, miny, maxx, maxy = polygs.total_bounds
-        mx = (maxx - minx) * 0.3 + 0.005
-        my = (maxy - miny) * 0.3 + 0.005
-        x0_crop, x1_crop = minx - mx, maxx + mx
-        y0_crop, y1_crop = miny - my, maxy + my
-    else:
-        x0_crop, x1_crop = east, east + ncells*dx
-        y0_crop, y1_crop = north - nlines*dy, north
 
     unw = find_unw(intf_key)
     if unw is not None:
@@ -63,22 +63,29 @@ def draw(intf_key):
         ax.imshow(crop, cmap="jet", vmin=0, vmax=1,
                   extent=crop_extent, origin="upper", aspect="equal")
 
+    polygs = gdf_all[gdf_all["intf_key"] == intf_key]
     polygs.plot(ax=ax, facecolor="none", edgecolor="white", linewidth=1.5)
     ax.set_xlim(x0_crop, x1_crop)
     ax.set_ylim(y0_crop, y1_crop)
-
     track = polygs["track"].iloc[0] if not polygs.empty else "?"
     ax.set_title(intf_key + "  |  " + str(len(polygs)) + " polygons  |  " + track)
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     fig.canvas.draw_idle()
 
-dd = Dropdown(options=intfs_2023, description="Intf 2023:")
-
-def on_change(change):
+def on_intf_change(change):
     if change["name"] == "value":
-        draw(change["new"])
+        draw()
 
-dd.observe(on_change)
-display(VBox([dd, fig.canvas]))
-draw(intfs_2023[0])
+def on_btn_click(b):
+    draw()
+
+dd.observe(on_intf_change)
+btn.on_click(on_btn_click)
+
+controls = VBox([
+    dd,
+    HBox([Label("Region:"), lon_min, lon_max, lat_min, lat_max, btn])
+])
+display(VBox([controls, fig.canvas]))
+draw()
