@@ -2,7 +2,8 @@ import numpy as np
 import glob, json, os
 import geopandas as gpd
 import matplotlib.pyplot as plt
-from ipywidgets import interact, Dropdown
+from ipywidgets import Dropdown, VBox
+from IPython.display import display
 
 INTF_DIR   = "/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data"
 SHP_PATH   = glob.glob("/home/labs/rudich/Rudich_Collaboration/sinkholes/pred_outputs2/"
@@ -23,7 +24,11 @@ def find_unw(intf_key):
     files = glob.glob(os.path.join(INTF_DIR, "tgeo_int_" + d1 + "*_" + d2 + "*.unw"))
     return files[0] if files else None
 
-def plot_intf(intf_key):
+fig, ax = plt.subplots(figsize=(10, 8))
+plt.tight_layout()
+
+def draw(intf_key):
+    ax.cla()
     info = intf_info.get(intf_key, {})
     north, east = info["north"], info["east"]
     dx, dy = info["dx"], info["dy"]
@@ -32,9 +37,6 @@ def plot_intf(intf_key):
     extent = [east, east + ncells*dx, north - nlines*dy, north]
 
     unw = find_unw(intf_key)
-    polygs = gdf_all[gdf_all["intf_key"] == intf_key]
-
-    fig, ax = plt.subplots(figsize=(10, 8))
     if unw is not None:
         data = np.fromfile(unw, dtype=np.float32).reshape(nlines, ncells)
         if bo == "MSBFirst":
@@ -42,10 +44,10 @@ def plot_intf(intf_key):
         data = (data + np.pi) / (2 * np.pi)
         ax.imshow(data, cmap="jet", vmin=0, vmax=1,
                   extent=extent, origin="upper", aspect="equal")
-    else:
-        print("No .unw file for " + intf_key)
 
+    polygs = gdf_all[gdf_all["intf_key"] == intf_key]
     polygs.plot(ax=ax, facecolor="none", edgecolor="white", linewidth=1.5)
+
     if not polygs.empty:
         minx, miny, maxx, maxy = polygs.total_bounds
         mx = (maxx - minx) * 0.3 + 0.005
@@ -57,7 +59,14 @@ def plot_intf(intf_key):
     ax.set_title(intf_key + "  |  " + str(len(polygs)) + " polygons  |  " + track)
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
-    plt.tight_layout()
-    plt.show()
+    fig.canvas.draw_idle()
 
-interact(plot_intf, intf_key=Dropdown(options=intfs_2023, description="Intf 2023:"))
+dd = Dropdown(options=intfs_2023, description="Intf 2023:")
+
+def on_change(change):
+    if change["name"] == "value":
+        draw(change["new"])
+
+dd.observe(on_change)
+display(VBox([dd, fig.canvas]))
+draw(intfs_2023[0])
