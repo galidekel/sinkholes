@@ -95,10 +95,14 @@ def on_next(b):
     dd.value = intfs_2023[(idx + 1) % len(intfs_2023)]
 
 def on_reset(b):
-    lon_min.value = DEFAULT_LON_MIN
-    lon_max.value = DEFAULT_LON_MAX
-    lat_min.value = DEFAULT_LAT_MIN
-    lat_max.value = DEFAULT_LAT_MAX
+    info = intf_info.get(dd.value, {})
+    north, east = info["north"], info["east"]
+    dx, dy = info["dx"], info["dy"]
+    nlines, ncells = info["nlines"], info["ncells"]
+    lon_min.value = east
+    lon_max.value = east + ncells * dx
+    lat_min.value = north - nlines * dy
+    lat_max.value = north
     draw()
 
 dd.observe(on_intf_change)
