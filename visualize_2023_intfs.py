@@ -2,7 +2,7 @@ import numpy as np
 import glob, json, os
 import geopandas as gpd
 import matplotlib
-matplotlib.use("Qt5Agg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
 
