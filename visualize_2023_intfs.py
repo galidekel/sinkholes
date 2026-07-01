@@ -42,7 +42,8 @@ def draw(intf_key):
         if bo == "MSBFirst":
             data = data.byteswap().newbyteorder("<")
         data = (data + np.pi) / (2 * np.pi)
-        ax.imshow(data, cmap="jet", vmin=0, vmax=1,
+        step = 8
+        ax.imshow(data[::step, ::step], cmap="jet", vmin=0, vmax=1,
                   extent=extent, origin="upper", aspect="equal")
 
     polygs = gdf_all[gdf_all["intf_key"] == intf_key]
