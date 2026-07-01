@@ -36,25 +36,36 @@ def draw(intf_key):
     bo = info.get("byte_order", "LSBFirst")
     extent = [east, east + ncells*dx, north - nlines*dy, north]
 
-    unw = find_unw(intf_key)
-    if unw is not None:
-        data = np.fromfile(unw, dtype=np.float32).reshape(nlines, ncells)
-        if bo == "MSBFirst":
-            data = data.byteswap().newbyteorder("<")
-        data = (data + np.pi) / (2 * np.pi)
-        step = 8
-        ax.imshow(data[::step, ::step], cmap="jet", vmin=0, vmax=1,
-                  extent=extent, origin="upper", aspect="equal")
-
     polygs = gdf_all[gdf_all["intf_key"] == intf_key]
-    polygs.plot(ax=ax, facecolor="none", edgecolor="white", linewidth=1.5)
 
     if not polygs.empty:
         minx, miny, maxx, maxy = polygs.total_bounds
         mx = (maxx - minx) * 0.3 + 0.005
         my = (maxy - miny) * 0.3 + 0.005
-        ax.set_xlim(minx - mx, maxx + mx)
-        ax.set_ylim(miny - my, maxy + my)
+        x0_crop, x1_crop = minx - mx, maxx + mx
+        y0_crop, y1_crop = miny - my, maxy + my
+    else:
+        x0_crop, x1_crop = east, east + ncells*dx
+        y0_crop, y1_crop = north - nlines*dy, north
+
+    unw = find_unw(intf_key)
+    if unw is not None:
+        col0 = max(0, int((x0_crop - east) / dx))
+        col1 = min(ncells, int((x1_crop - east) / dx) + 1)
+        row0 = max(0, int((north - y1_crop) / dy))
+        row1 = min(nlines, int((north - y0_crop) / dy) + 1)
+        data = np.memmap(unw, dtype=np.float32, mode="r", shape=(nlines, ncells))
+        crop = data[row0:row1, col0:col1].copy()
+        if bo == "MSBFirst":
+            crop = crop.byteswap().newbyteorder("<")
+        crop = (crop + np.pi) / (2 * np.pi)
+        crop_extent = [east + col0*dx, east + col1*dx, north - row1*dy, north - row0*dy]
+        ax.imshow(crop, cmap="jet", vmin=0, vmax=1,
+                  extent=crop_extent, origin="upper", aspect="equal")
+
+    polygs.plot(ax=ax, facecolor="none", edgecolor="white", linewidth=1.5)
+    ax.set_xlim(x0_crop, x1_crop)
+    ax.set_ylim(y0_crop, y1_crop)
 
     track = polygs["track"].iloc[0] if not polygs.empty else "?"
     ax.set_title(intf_key + "  |  " + str(len(polygs)) + " polygons  |  " + track)
