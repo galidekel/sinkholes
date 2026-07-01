@@ -45,7 +45,7 @@ def plot_intf(intf_key):
     else:
         print("No .unw file for " + intf_key)
 
-    polygs.plot(ax=ax, facecolor="none", edgecolor="yellow", linewidth=1.5)
+    polygs.plot(ax=ax, facecolor="none", edgecolor="white", linewidth=1.5)
     if not polygs.empty:
         minx, miny, maxx, maxy = polygs.total_bounds
         mx = (maxx - minx) * 0.3 + 0.005
