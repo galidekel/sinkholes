@@ -27,12 +27,14 @@ def find_unw(intf_key):
 fig, ax = plt.subplots(figsize=(10, 8))
 plt.tight_layout()
 
-dd   = Dropdown(options=intfs_2023, description="Intf:")
+dd      = Dropdown(options=intfs_2023, description="Intf:")
 lon_min = FloatText(value=35.35, description="Lon min:", step=0.001, layout={"width": "200px"})
 lon_max = FloatText(value=35.45, description="Lon max:", step=0.001, layout={"width": "200px"})
 lat_min = FloatText(value=31.38, description="Lat min:", step=0.001, layout={"width": "200px"})
 lat_max = FloatText(value=31.47, description="Lat max:", step=0.001, layout={"width": "200px"})
 btn     = Button(description="Apply region", button_style="primary")
+btn_prev = Button(description="◀ Prev", layout={"width": "80px"})
+btn_next = Button(description="Next ▶", layout={"width": "80px"})
 
 def draw(intf_key=None, x0_crop=None, x1_crop=None, y0_crop=None, y1_crop=None):
     ax.cla()
@@ -80,11 +82,21 @@ def on_intf_change(change):
 def on_btn_click(b):
     draw()
 
+def on_prev(b):
+    idx = intfs_2023.index(dd.value)
+    dd.value = intfs_2023[(idx - 1) % len(intfs_2023)]
+
+def on_next(b):
+    idx = intfs_2023.index(dd.value)
+    dd.value = intfs_2023[(idx + 1) % len(intfs_2023)]
+
 dd.observe(on_intf_change)
 btn.on_click(on_btn_click)
+btn_prev.on_click(on_prev)
+btn_next.on_click(on_next)
 
 controls = VBox([
-    dd,
+    HBox([btn_prev, dd, btn_next]),
     HBox([Label("Region:"), lon_min, lon_max, lat_min, lat_max, btn])
 ])
 display(VBox([controls, fig.canvas]))
