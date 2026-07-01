@@ -1,10 +1,8 @@
 import numpy as np
 import glob, json, os
 import geopandas as gpd
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Button
+from ipywidgets import interact, Dropdown
 
 INTF_DIR   = "/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data"
 SHP_PATH   = glob.glob("/home/labs/rudich/Rudich_Collaboration/sinkholes/pred_outputs2/"
@@ -25,40 +23,28 @@ def find_unw(intf_key):
     files = glob.glob(os.path.join(INTF_DIR, "tgeo_int_" + d1 + "*_" + d2 + "*.unw"))
     return files[0] if files else None
 
-def load_intf(intf_key):
+def plot_intf(intf_key):
     info = intf_info.get(intf_key, {})
     north, east = info["north"], info["east"]
     dx, dy = info["dx"], info["dy"]
     nlines, ncells = info["nlines"], info["ncells"]
     bo = info.get("byte_order", "LSBFirst")
     extent = [east, east + ncells*dx, north - nlines*dy, north]
+
     unw = find_unw(intf_key)
-    if unw is None:
-        return None, extent, info
-    data = np.fromfile(unw, dtype=np.float32).reshape(nlines, ncells)
-    if bo == "MSBFirst":
-        data = data.byteswap().newbyteorder("<")
-    data = (data + np.pi) / (2 * np.pi)
-    return data, extent, info
-
-fig, ax = plt.subplots(figsize=(11, 9))
-plt.subplots_adjust(bottom=0.12)
-
-ax_prev = plt.axes([0.2, 0.03, 0.12, 0.05])
-ax_next = plt.axes([0.68, 0.03, 0.12, 0.05])
-btn_prev = Button(ax_prev, "< Prev")
-btn_next = Button(ax_next, "Next >")
-
-state = {"idx": 0}
-
-def draw(idx):
-    ax.cla()
-    intf_key = intfs_2023[idx]
-    data, extent, info = load_intf(intf_key)
     polygs = gdf_all[gdf_all["intf_key"] == intf_key]
-    if data is not None:
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    if unw is not None:
+        data = np.fromfile(unw, dtype=np.float32).reshape(nlines, ncells)
+        if bo == "MSBFirst":
+            data = data.byteswap().newbyteorder("<")
+        data = (data + np.pi) / (2 * np.pi)
         ax.imshow(data, cmap="jet", vmin=0, vmax=1,
                   extent=extent, origin="upper", aspect="equal")
+    else:
+        print("No .unw file for " + intf_key)
+
     polygs.plot(ax=ax, facecolor="none", edgecolor="yellow", linewidth=1.5)
     if not polygs.empty:
         minx, miny, maxx, maxy = polygs.total_bounds
@@ -66,23 +52,12 @@ def draw(idx):
         my = (maxy - miny) * 0.3 + 0.005
         ax.set_xlim(minx - mx, maxx + mx)
         ax.set_ylim(miny - my, maxy + my)
+
     track = polygs["track"].iloc[0] if not polygs.empty else "?"
-    ax.set_title(intf_key + "  |  " + str(len(polygs)) + " polygons  |  " + track +
-                 "  [" + str(idx+1) + "/" + str(len(intfs_2023)) + "]")
+    ax.set_title(intf_key + "  |  " + str(len(polygs)) + " polygons  |  " + track)
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
-    fig.canvas.draw_idle()
+    plt.tight_layout()
+    plt.show()
 
-def on_prev(event):
-    state["idx"] = (state["idx"] - 1) % len(intfs_2023)
-    draw(state["idx"])
-
-def on_next(event):
-    state["idx"] = (state["idx"] + 1) % len(intfs_2023)
-    draw(state["idx"])
-
-btn_prev.on_clicked(on_prev)
-btn_next.on_clicked(on_next)
-
-draw(0)
-plt.show()
+interact(plot_intf, intf_key=Dropdown(options=intfs_2023, description="Intf 2023:"))
