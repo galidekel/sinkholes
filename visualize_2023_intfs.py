@@ -99,11 +99,11 @@ def on_reset(b):
     north, east = info["north"], info["east"]
     dx, dy = info["dx"], info["dy"]
     nlines, ncells = info["nlines"], info["ncells"]
-    lon_min.value = east
-    lon_max.value = east + ncells * dx
-    lat_min.value = north - nlines * dy
-    lat_max.value = north
-    draw()
+    x0, x1 = east, east + ncells * dx
+    y0, y1 = north - nlines * dy, north
+    lon_min.value, lon_max.value = x0, x1
+    lat_min.value, lat_max.value = y0, y1
+    draw(x0_crop=x0, x1_crop=x1, y0_crop=y0, y1_crop=y1)
 
 dd.observe(on_intf_change)
 btn.on_click(on_btn_click)
