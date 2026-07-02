@@ -65,7 +65,7 @@ def draw(intf_key=None, x0_crop=None, x1_crop=None, y0_crop=None, y1_crop=None):
         if bo == "MSBFirst":
             crop = crop.byteswap().newbyteorder("<")
         crop = (crop + np.pi) / (2 * np.pi)
-        step = max(1, min((row1-row0), (col1-col0)) // 500)
+        step = max(1, max((row1-row0), (col1-col0)) // 2000)
         crop_extent = [east + col0*dx, east + col1*dx, north - row1*dy, north - row0*dy]
         ax.imshow(crop[::step, ::step], cmap="jet", vmin=0, vmax=1,
                   extent=crop_extent, origin="upper", aspect="auto")
