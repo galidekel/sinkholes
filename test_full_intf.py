@@ -424,7 +424,7 @@ if __name__ == '__main__':
 
         # target mask (unioned over time if requested)
         mask_cur = np.load(mask_path).astype(np.float32)
-        if args.k_prevs > 0:
+        if args.k_prevs > 0 and not args.replicate_input:
             prev_mask_paths = [
                 os.path.join(mask_dir, f'mask_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
                 for pid in prev_ids
