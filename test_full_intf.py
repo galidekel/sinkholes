@@ -265,6 +265,8 @@ def get_pred_args():
                    help='Filter intfs to this year range (inclusive) when --intf_source all')
     p.add_argument('--save_confidence', action='store_true',
                    help='Save confidence map (*_pred.npy) for every intf')
+    p.add_argument('--replicate_input', action='store_true',
+                   help='Repeat current intf for all k_prevs channels instead of loading previous intfs')
 
     return p.parse_args()
 
@@ -380,13 +382,16 @@ if __name__ == '__main__':
 
         # build channel stack (current + prevs), normalize per-channel only if not 0..1
         if args.k_prevs > 0:
-            prev_ids = prev_dict[intf]['prevs'][:args.k_prevs][::-1]  # newest-first
-            prevs = [
-                np.load(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
-                       ).astype(np.float32)
-                for pid in prev_ids
-            ]
-            pa = [cur] + prevs
+            if args.replicate_input:
+                pa = [cur] * (args.k_prevs + 1)
+            else:
+                prev_ids = prev_dict[intf]['prevs'][:args.k_prevs][::-1]  # newest-first
+                prevs = [
+                    np.load(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
+                           ).astype(np.float32)
+                    for pid in prev_ids
+                ]
+                pa = [cur] + prevs
 
             # crop to common overlap (bottom/right only)
             ny = min(p.shape[0] for p in pa)
