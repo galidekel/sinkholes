@@ -263,6 +263,8 @@ def get_pred_args():
     p.add_argument('--year_range', nargs=2, type=int, default=[2019, 2023],
                    metavar=('YEAR_START', 'YEAR_END'),
                    help='Filter intfs to this year range (inclusive) when --intf_source all')
+    p.add_argument('--save_confidence', action='store_true',
+                   help='Save confidence map (*_pred.npy) for every intf')
 
     return p.parse_args()
 
@@ -486,8 +488,10 @@ if __name__ == '__main__':
             # out == (reconstructed_intf_all, reconstructed_mask, reconstructed_pred_th, reconstructed_pred, reconstructed_prevs)
             # we already have the full stack from the function
             image_to_save = reconstructed_intf_all.astype(np.float32)  # (C,H,W)
+        if args.save_confidence:
+            np.save(prefix + '_pred', reconstructed_pred)
         if args.intf_source != 'all':
-            np.save(prefix + '_image', image_to_save)  # <-- shape (k_prevs+1, H, W)
+            np.save(prefix + '_image', image_to_save)
             np.save(prefix + '_pred_th', reconstructed_pred_th)
             np.save(prefix + '_pred', reconstructed_pred)
             if reconstructed_mask is not None:
