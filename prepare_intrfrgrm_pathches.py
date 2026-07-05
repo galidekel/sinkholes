@@ -98,6 +98,9 @@ def get_args():
     parser.add_argument('--x0_S', type=float, default=35.32)
     parser.add_argument('--offset_x', type=int, default=0)
     parser.add_argument('--nx',type=int,default=4500)
+    parser.add_argument('--year_range', nargs=2, type=int, default=None,
+                        metavar=('YEAR_START', 'YEAR_END'),
+                        help='Only process intfs whose start year is in this range (inclusive)')
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -152,6 +155,10 @@ if __name__ == '__main__':
         days_diff = (end_datetime - start_datetime).days
         if days_diff != req_days_diff:
             continue
+        if args.year_range is not None:
+            yr0, yr1 = args.year_range
+            if not (yr0 <= start_datetime.year <= yr1):
+                continue
 
         intf_mdata = get_intf_coords(intfrgrm_name)
         x0, y0, dx, dy = intf_mdata[0], intf_mdata[1], intf_mdata[2], intf_mdata[3]
