@@ -442,7 +442,7 @@ if __name__ == '__main__':
         # --- LiDAR sources list for current+prevs (for AND gating) ---
         cur_lm = ic[8]  # current lidar source from dict
         lidar_sources = [cur_lm]
-        if args.k_prevs > 0:
+        if args.k_prevs > 0 and not args.replicate_input:
             for pid in prev_ids:
                 pic = get_intf_coords(pid)
                 lidar_sources.append(pic[8])
