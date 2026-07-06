@@ -1,4 +1,3 @@
-%matplotlib widget
 import numpy as np
 import glob, json, os
 import geopandas as gpd
