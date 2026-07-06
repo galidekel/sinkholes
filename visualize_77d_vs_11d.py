@@ -56,14 +56,16 @@ p77 = gdf_77d[gdf_77d['intf_key'] == KEY_77]
 if not p11.empty:
     p11.boundary.plot(ax=ax1, color='white', linewidth=1.5, zorder=5)
 ax1.set_aspect('auto')
-ax1.set_xlim(extent[0], extent[1])
-ax1.set_ylim(extent[2], extent[3])
+ax1.set_xlim(extent77[0], extent77[1])
+ax1.set_ylim(extent77[2], extent77[3])
 ax1.xaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
 ax1.yaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
 ax1.set_title(f"11-day: {KEY_11}", fontsize=12)
 ax1.set_xlabel("Lon"); ax1.set_ylabel("Lat")
 
-ax2.imshow(conf, extent=extent77, cmap='hot', vmin=0, vmax=1, aspect='auto', origin='upper')
+conf_nz = conf[conf > 0]
+vmax77 = float(np.percentile(conf_nz, 98)) if conf_nz.size else 1.0
+ax2.imshow(conf, extent=extent77, cmap='hot', vmin=0, vmax=vmax77, aspect='auto', origin='upper')
 if not p77.empty:
     p77.boundary.plot(ax=ax2, color='white', linewidth=1.5, zorder=5)
 ax2.set_aspect('auto')
