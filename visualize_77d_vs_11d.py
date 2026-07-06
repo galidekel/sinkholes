@@ -57,14 +57,14 @@ _cache = {}
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
 plt.tight_layout()
 
-dd       = Dropdown(options=list(enumerate(pair_labels)), description="Intf:")
+dd       = Dropdown(options=pair_labels, description="Intf:")
 dd.layout.width = '600px'
 btn_prev = Button(description="◀ Prev", layout={"width": "80px"})
 btn_next = Button(description="Next ▶", layout={"width": "80px"})
 
 def draw(idx=None):
     if idx is None:
-        idx = dd.value
+        idx = dd.index
     key77, key11 = pairs[idx]
 
     ax1.cla(); ax2.cla()
@@ -108,18 +108,16 @@ def draw(idx=None):
     fig.canvas.draw_idle()
 
 def on_change(change):
-    if change['name'] == 'value':
+    if change['name'] == 'index':
         draw(change['new'])
 
 def on_prev(b):
-    idx = dd.value
-    if idx > 0:
-        dd.value = idx - 1
+    if dd.index > 0:
+        dd.index -= 1
 
 def on_next(b):
-    idx = dd.value
-    if idx < len(pairs) - 1:
-        dd.value = idx + 1
+    if dd.index < len(pairs) - 1:
+        dd.index += 1
 
 dd.observe(on_change)
 btn_prev.on_click(on_prev)
