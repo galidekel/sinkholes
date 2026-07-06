@@ -50,11 +50,11 @@ def load_intf(intf_key):
     step = max(1, max(nlines, ncells) // 1000)
     raw = np.memmap(unw, dtype='>f4' if bo == 'MSBFirst' else '<f4', mode='r', shape=(nlines, ncells))
     data = raw[::step, ::step].copy()
-    return data, north, east, dx, dy, nlines // step, ncells // step
+    return data, north, east, dx * step, dy * step, nlines // step, ncells // step
 
 _cache = {}
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 14))
 plt.tight_layout()
 
 dd       = Dropdown(options=pair_labels, description="Intf:")
@@ -86,10 +86,14 @@ def draw(idx=None):
         ax1.imshow(data, extent=extent, cmap='jet', vmin=p2p[0], vmax=p2p[1], aspect='auto', origin='upper')
         polygs_11 = gdf_11d[gdf_11d['intf_key'] == key11]
         if not polygs_11.empty:
-            polygs_11.boundary.plot(ax=ax1, color='white', linewidth=1)
+            print(f"polygs CRS: {polygs_11.crs}  bounds: {polygs_11.total_bounds}")
+            p11 = polygs_11.to_crs('EPSG:4326') if polygs_11.crs and polygs_11.crs.to_epsg() != 4326 else polygs_11
+            p11.boundary.plot(ax=ax1, color='lime', linewidth=1.5, zorder=5)
         ax1.set_aspect('auto')
         ax1.set_xlim(extent[0], extent[1])
         ax1.set_ylim(extent[2], extent[3])
+        ax1.xaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
+        ax1.yaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
         ax1.set_title(f"11-day: {key11}", fontsize=10)
         ax1.set_xlabel("Lon"); ax1.set_ylabel("Lat")
     else:
@@ -100,9 +104,11 @@ def draw(idx=None):
     pred_path = os.path.join(PRED_DIR, f"{key77}_pred.npy")
     if os.path.exists(pred_path):
         conf = np.load(pred_path)
-        info77 = intf_info.get(key77, {})
-        north77, east77 = info77.get("north", 0), info77.get("east", 0)
-        dx77, dy77 = info77.get("dx", 1), info77.get("dy", 1)
+        info_ref = intf_info.get(key11 or key77, {})
+        north77 = info_ref.get("north", 0)
+        east77  = info_ref.get("east",  0)
+        dx77    = info_ref.get("dx",    1)
+        dy77    = info_ref.get("dy",    1)
         nlines77, ncells77 = conf.shape
         extent77 = [east77, east77 + dx77 * ncells77, north77 - dy77 * nlines77, north77]
         ax2.imshow(conf, extent=extent77, cmap='hot', vmin=0, vmax=1, aspect='auto', origin='upper')
@@ -112,6 +118,8 @@ def draw(idx=None):
         ax2.set_aspect('auto')
         ax2.set_xlim(extent77[0], extent77[1])
         ax2.set_ylim(extent77[2], extent77[3])
+        ax2.xaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
+        ax2.yaxis.set_major_formatter(plt.FormatStrFormatter('%.3f'))
         ax2.set_title(f"77-day confidence: {key77}", fontsize=10)
         ax2.set_xlabel("Lon")
     else:
