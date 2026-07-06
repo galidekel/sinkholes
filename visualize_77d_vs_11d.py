@@ -1,14 +1,15 @@
-import numpy as np
 import glob, json, os
+import numpy as np
 import geopandas as gpd
 import matplotlib.pyplot as plt
 from ipywidgets import Dropdown, Button, HBox, VBox
 from IPython.display import display
 
 INTF_DIR    = "/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data"
-SHP_11D     = "/home/labs/rudich/Rudich_Collaboration/sinkholes/job_train_temporal_2019_2021_negrings04_2026-04-28_17h59checkpoint_epoch55_2019_2023_combined.shp"
-SHP_77D     = "/home/labs/rudich/Rudich_Collaboration/sinkholes/77d_polygs/job_train_temporal_2019_2021_negrings04_2026-04-28_17h59checkpoint_epoch55_2022_2023_combined.shp"
+JOB_11D     = "/home/labs/rudich/Rudich_Collaboration/sinkholes/pred_outputs2/job_train_temporal_2019_2021_negrings04_2026-04-28_17h59checkpoint_epoch55/job_07_01_01h53"
 PRED_DIR    = "/home/labs/rudich/Rudich_Collaboration/sinkholes/pred_outputs2/job_train_temporal_2019_2021_negrings04_2026-04-28_17h59checkpoint_epoch55/job_07_05_16h18"
+SHP_11D     = glob.glob(os.path.join(JOB_11D, "*combined.shp"))[0]
+SHP_77D     = glob.glob(os.path.join(PRED_DIR, "*combined.shp"))[0]
 COORD_JSON  = "/home/labs/rudich/Rudich_Collaboration/sinkholes/intf_coord.json"
 
 with open(COORD_JSON) as f:
