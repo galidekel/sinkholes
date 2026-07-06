@@ -41,11 +41,18 @@ conf = np.load(os.path.join(PRED_DIR, f"{KEY_77}_pred.npy"))
 nlines77, ncells77 = conf.shape
 extent77 = [east, east + dx * ncells77, north - dy * nlines77, north]
 
+print(f"11d intf shape: {data.shape}  extent: {extent}")
+print(f"77d conf shape: {conf.shape}  extent: {extent77}")
+print(f"conf min={conf.min():.4f} max={conf.max():.4f} mean={conf.mean():.4f}")
+print(f"11d polygons: {len(p11 := gdf_11d[gdf_11d['intf_key']==KEY_11])}")
+print(f"77d polygons: {len(p77 := gdf_77d[gdf_77d['intf_key']==KEY_77])}")
+
 # ── plot ──────────────────────────────────────────────────────────────────────
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 9))
 
 ax1.imshow(data, extent=extent, cmap='jet', vmin=p2p[0], vmax=p2p[1], aspect='auto', origin='upper')
 p11 = gdf_11d[gdf_11d['intf_key'] == KEY_11]
+p77 = gdf_77d[gdf_77d['intf_key'] == KEY_77]
 if not p11.empty:
     p11.boundary.plot(ax=ax1, color='white', linewidth=1.5, zorder=5)
 ax1.set_aspect('auto')
@@ -57,7 +64,6 @@ ax1.set_title(f"11-day: {KEY_11}", fontsize=12)
 ax1.set_xlabel("Lon"); ax1.set_ylabel("Lat")
 
 ax2.imshow(conf, extent=extent77, cmap='hot', vmin=0, vmax=1, aspect='auto', origin='upper')
-p77 = gdf_77d[gdf_77d['intf_key'] == KEY_77]
 if not p77.empty:
     p77.boundary.plot(ax=ax2, color='white', linewidth=1.5, zorder=5)
 ax2.set_aspect('auto')
