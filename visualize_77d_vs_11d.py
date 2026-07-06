@@ -41,7 +41,7 @@ p2p = np.nanpercentile(data[data != 0], [2, 98])
 
 # conf and extent77 already computed above when cropping 11d data
 
-print(f"11d intf shape: {data.shape}  extent: {extent}")
+print(f"11d intf shape: {data.shape}  extent: {extent77}")
 print(f"77d conf shape: {conf.shape}  extent: {extent77}")
 print(f"conf min={conf.min():.4f} max={conf.max():.4f} mean={conf.mean():.4f}")
 print(f"11d polygons: {len(p11 := gdf_11d[gdf_11d['intf_key']==KEY_11])}")
@@ -50,7 +50,7 @@ print(f"77d polygons: {len(p77 := gdf_77d[gdf_77d['intf_key']==KEY_77])}")
 # ── plot ──────────────────────────────────────────────────────────────────────
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 16))
 
-ax1.imshow(data, extent=extent, cmap='jet', vmin=p2p[0], vmax=p2p[1], aspect='auto', origin='upper')
+ax1.imshow(data, extent=extent77, cmap='jet', vmin=p2p[0], vmax=p2p[1], aspect='auto', origin='upper')
 p11 = gdf_11d[gdf_11d['intf_key'] == KEY_11]
 p77 = gdf_77d[gdf_77d['intf_key'] == KEY_77]
 if not p11.empty:
