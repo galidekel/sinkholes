@@ -66,6 +66,13 @@ def draw(idx=None):
     if idx is None:
         idx = dd.index
     key77, key11 = pairs[idx]
+    print(f"key77={key77}  key11={key11}")
+    pred_path = os.path.join(PRED_DIR, f"{key77}_pred.npy")
+    print(f"conf map exists: {os.path.exists(pred_path)}  path: {pred_path}")
+    polygs_11 = gdf_11d[gdf_11d['intf_key'] == key11]
+    print(f"11d polygons matching key11: {len(polygs_11)}")
+    unw = find_unw(key11) if key11 else None
+    print(f"unw file: {unw}")
 
     ax1.cla(); ax2.cla()
 
