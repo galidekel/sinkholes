@@ -80,6 +80,9 @@ def draw(idx=None):
         polygs_11 = gdf_11d[gdf_11d['intf_key'] == key11]
         if not polygs_11.empty:
             polygs_11.boundary.plot(ax=ax1, color='white', linewidth=1)
+        ax1.set_aspect('auto')
+        ax1.set_xlim(extent[0], extent[1])
+        ax1.set_ylim(extent[2], extent[3])
         ax1.set_title(f"11-day: {key11}", fontsize=10)
         ax1.set_xlabel("Lon"); ax1.set_ylabel("Lat")
     else:
@@ -99,6 +102,9 @@ def draw(idx=None):
         polygs_77 = gdf_77d[gdf_77d['intf_key'] == key77]
         if not polygs_77.empty:
             polygs_77.boundary.plot(ax=ax2, color='cyan', linewidth=1)
+        ax2.set_aspect('auto')
+        ax2.set_xlim(extent77[0], extent77[1])
+        ax2.set_ylim(extent77[2], extent77[3])
         ax2.set_title(f"77-day confidence: {key77}", fontsize=10)
         ax2.set_xlabel("Lon")
     else:
