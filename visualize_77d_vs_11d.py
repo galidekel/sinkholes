@@ -32,14 +32,14 @@ bo = info.get("byte_order", "LSBFirst")
 
 unw = glob.glob(os.path.join(INTF_DIR, f"tgeo_int_{KEY_11[:8]}*_{KEY_11[9:]}*.unw"))[0]
 raw  = np.memmap(unw, dtype='>f4' if bo == 'MSBFirst' else '<f4', mode='r', shape=(nlines, ncells))
-data = raw[:, :].copy()
-extent = [east, east + dx * ncells, north - dy * nlines, north]
-p2p = np.nanpercentile(data[data != 0], [2, 98])
-
-# ── load 77-day confidence map ────────────────────────────────────────────────
+# crop to 77d footprint (same origin and dx/dy, just fewer rows/cols)
 conf = np.load(os.path.join(PRED_DIR, f"{KEY_77}_pred.npy"))
 nlines77, ncells77 = conf.shape
+data = raw[:nlines77, :ncells77].copy()
 extent77 = [east, east + dx * ncells77, north - dy * nlines77, north]
+p2p = np.nanpercentile(data[data != 0], [2, 98])
+
+# conf and extent77 already computed above when cropping 11d data
 
 print(f"11d intf shape: {data.shape}  extent: {extent}")
 print(f"77d conf shape: {conf.shape}  extent: {extent77}")
@@ -48,7 +48,7 @@ print(f"11d polygons: {len(p11 := gdf_11d[gdf_11d['intf_key']==KEY_11])}")
 print(f"77d polygons: {len(p77 := gdf_77d[gdf_77d['intf_key']==KEY_77])}")
 
 # ── plot ──────────────────────────────────────────────────────────────────────
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 9))
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 16))
 
 ax1.imshow(data, extent=extent, cmap='jet', vmin=p2p[0], vmax=p2p[1], aspect='auto', origin='upper')
 p11 = gdf_11d[gdf_11d['intf_key'] == KEY_11]
