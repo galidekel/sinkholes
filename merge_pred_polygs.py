@@ -2,7 +2,7 @@ import glob, os, json
 import geopandas as gpd
 import pandas as pd
 
-POLYG_DIR_2022 = '/home/labs/rudich/Rudich_Collaboration/sinkholes/pred_outputs2/job_train_temporal_2019_2021_negrings04_2026-04-28_17h59checkpoint_epoch55/job_05_20_17h44/polygs'
+POLYG_DIR_2022 = 'polygs_2022_tmp/polygs'
 PRED_2019_2021 = 'sub_pred_2019_2021.shp'
 OUT_SHP        = 'sub_pred_2019_2022.shp'
 
