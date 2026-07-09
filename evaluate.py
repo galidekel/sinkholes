@@ -352,46 +352,33 @@ def object_level_evaluate( gt, pred, image = None, features = ['area', 'roundnes
         undetected_gt_areas = []
         detected_gt_feat = []
         undetected_gt_feat = []
-
+        from shapely.ops import unary_union
         for pgt in gt_polygons:
             intersection = 0
             orig_intersection_area = 0
-            for pp in pred_polygons:
-                buffered_pp = pp.buffer(buffer)
-                intersection += pgt.intersection(buffered_pp).area/pgt.area
-                orig_intersection_area +=pgt.intersection(pp).area
-                # if True:
-                #     x, y = pp.exterior.xy
-                #     x1, y1 = buffered_pp.exterior.xy
-                #     x2, y2 = pgt.exterior.xy
-                #     ints = pgt.intersection(buffered_pp)
-                #
-                #     if not ints.is_empty:
-                #         x_int, y_int = ints.exterior.xy
-                #
-                #         fig, [ax1,ax2] = plt.subplots(1, 2, sharex=True, sharey=True)
-                #
-                #         ax1.imshow(gt[i], cmap='gray')
-                #         ax1.set_title('Ground Truth Mask')
-                #         ax2.imshow(pred[i], cmap='gray')
-                #         ax2.set_title('Predicted Mask')
-                #         ax2.plot(x, y,color='red',linewidth=2)
-                #         ax2.plot(x1, y1, color='blue',linewidth=2)
-                #         ax2.plot(x2, y2,color='green',linewidth=2)
-                #         ax2.fill(x_int, y_int, alpha=0.5, fc='yellow', label='Intersection')
-                #
-                #
-                #         plt.show()
+            # for pp in pred_polygons:
+            #     buffered_pp = pp.buffer(buffer)
+            #     intersection += pgt.intersection(buffered_pp).area/pgt.area
+            #     orig_intersection_area +=pgt.intersection(pp).area
 
+            buffered_union = unary_union([pp.buffer(buffer) for pp in pred_polygons])
 
+            # union of original (unbuffered) preds
+            orig_union = unary_union(pred_polygons)
+
+            # intersection with GT polygon
+            inter_buf_area = pgt.intersection(buffered_union).area
+            inter_orig_area = pgt.intersection(orig_union).area
+
+            # your metrics
+            intersection = inter_buf_area / pgt.area
+            orig_intersection_area = inter_orig_area
             if intersection > th:
                 intersection_area += pgt.area
                 pred_intersection_area += orig_intersection_area
                 if True:
                     for feat in feature_lists:
                         feature_lists[feat][0].append(compute_feature(pgt,feat,image))
-
-
 
             else:
                 if True:
@@ -402,9 +389,13 @@ def object_level_evaluate( gt, pred, image = None, features = ['area', 'roundnes
         fp_area = 0
         for pp in pred_polygons:
             pp_intersection_area = 0
-            for pgt in gt_polygons:
-                pp_intersection_area += pgt.buffer(buffer).intersection(pp).area
-            if pp_intersection_area / pp.area < th:
+            # for pgt in gt_polygons:
+            #     pp_intersection_area += pgt.buffer(buffer).intersection(pp).area
+            buffered_union = unary_union([pgt.buffer(buffer) for pgt in gt_polygons])
+            inter_buf_area = pp.intersection(buffered_union).area
+
+            #
+            if inter_buf_area / pp.area < th:
                 fp_area += (pp.area - pp_intersection_area)
 
         ol_intersection_recall = round(intersection_area / (total_gt_area + epsilon),2)
@@ -417,7 +408,7 @@ def object_level_evaluate( gt, pred, image = None, features = ['area', 'roundnes
         intersect_recall.append(ol_intersection_recall)
         intersect_precision.append(ol_intersection_precision)
 
-        if plot and is_local and ol_intersection_recall <0.5 and ol_intersection_recall > 0.43 and ol_intersection_precision ==1:  # and (ol_intersection_recall < 0.7 and ol_intersection_precision > 0.8):
+        if plot and is_local:  # and (ol_intersection_recall < 0.7 and ol_intersection_precision > 0.8):
 
             from math import ceil
             from skimage import measure
@@ -534,7 +525,7 @@ def object_level_evaluate( gt, pred, image = None, features = ['area', 'roundnes
             gt_polys = mask_to_polygons(gt[i] > 0.5)
             pred_polys = mask_to_polygons(pred[i] > 0.5)
 
-            buffer_px = 5.0  # buffer radius in PIXELS
+            buffer_px = buffer  # buffer radius in PIXELS
 
             # 5) polygon-only diagnostics panel
             ax_poly = axes[idx]
@@ -551,7 +542,7 @@ def object_level_evaluate( gt, pred, image = None, features = ['area', 'roundnes
                     x_p, y_p = g.exterior.xy
 
                     # on the current-frame panel (first main panel)
-                    ax_cur.plot(x_p, y_p, color='black', linewidth=3, label='_nolegend_')
+                    # ax_cur.plot(x_p, y_p, color='black', linewidth=3, label='_nolegend_')
 
                     # on the polygon diagnostics panel
                     ax_poly.plot(x_p, y_p, color='black', linewidth=3, label='_nolegend_')
@@ -560,7 +551,7 @@ def object_level_evaluate( gt, pred, image = None, features = ['area', 'roundnes
             for poly in gt_polys:
                 for g in _iter_polygons(poly):
                     x_g, y_g = g.exterior.xy
-                    ax_cur.plot(x_g, y_g, color='white', linewidth=3, label='_nolegend_')
+                    # ax_cur.plot(x_g, y_g, color='white', linewidth=3, label='_nolegend_')
                     ax_poly.plot(x_g, y_g, color='white', linewidth=3, label='_nolegend_')
 
             # --- BUFFERED predicted polygons (cyan) on pred & polygon panels ---

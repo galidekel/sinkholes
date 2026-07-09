@@ -7,27 +7,14 @@ import os
 import argparse
 import geopandas as gpd
 from get_intf_info import *
-from view_reconstructed_pred import plg_longlat2indx
 import json
 from get_intf_info import *
-from matplotlib import colors
-from matplotlib.ticker import FormatStrFormatter
-from scipy.ndimage import gaussian_filter
-import matplotlib.patheffects as path_effects
+
+
 import json
 
-from collections import defaultdict
-from datetime import datetime
-
-import matplotlib.pyplot as plt
-import numpy as np
-import numpy as np
-import matplotlib.pyplot as plt
 import geopandas as gpd
-import rasterio
-from rasterio.features import rasterize
-import matplotlib.pyplot as plt
-import numpy as np
+
 from scipy.ndimage import gaussian_filter
 
 def plot_full_intfs_preds_vprevs_wlidarmask(
@@ -389,7 +376,7 @@ def plot_full_intfs_preds_vprevs(image, mask_true, mask_pred, mask_pred2, mask_p
     fig.subplots_adjust(top=0.88)  # keep title clear of panels
 
     # save & show (kept as in your code; assumes `item` exists in scope)
-    fig.savefig('/Users/galidek/Desktop/paper_figs/full_intfs/' + item + '_nov25', dpi=1000)
+    # fig.savefig('/Users/galidek/Desktop/paper_figs/full_intfs/' + item + '_nov25', dpi=1000)
     plt.show()
 
 def plot_full_intfs_preds(image,mask_true,mask_pred,mask_pred2,mask_pred3,mask_pred_conf):
@@ -502,9 +489,10 @@ ol_mean_recalls,ol_mean_precisions = [],[]
 images,preds,gts = [],[],[]
 recalls,precisions,recalls2,precisions2,recalls3,precisions3 = [],[],[],[],[],[]
 for item in unique_intf_list:
-    #     #
-    #     if '20210510' not in item:
-    #          continue
+    # #     #
+    #
+    # if '20210623' not in item:
+    #     continue
 
     # # if '0326' not in item and '1210' not in item:
     # if ( '2023' in item or '2022' in item):
@@ -541,31 +529,34 @@ for item in unique_intf_list:
         im_ydim = 1
     else:
         im_ydim = 0
-    #
+
     if frame =='South':
          half_size_y = image.shape[im_ydim]//2
-         half_size_x = image.shape[1]//2
-         image = image[:half_size_y,:]
+         if im_ydim==1:
+             image = image[:, :half_size_y, :]
+         else:
+            image = image[:half_size_y, :]
+
          mask_pred_conf = mask_pred_conf[:half_size_y,:]
          mask_pred = mask_pred[:half_size_y,:]
          mask_pred2 = mask_pred2[:half_size_y,:]
          mask_pred3 = mask_pred3[:half_size_y,:]
          mask_true = mask_true[:half_size_y,]
 
-    else:
-        size_y = image.shape[im_ydim]
-        fifth_size_y = image.shape[0]//5
-        half_size_x = image.shape[1+im_ydim]//2
-
-
-        y0 = y0-fifth_size_y*dy
-        image = image[:,fifth_size_y:size_y-1000, :half_size_x]
-        mask_pred_conf = mask_pred_conf[fifth_size_y:size_y-1000, :half_size_x]
-
-        mask_pred = mask_pred[fifth_size_y:size_y-1000, :half_size_x]
-        mask_pred2 = mask_pred2[fifth_size_y:size_y-1000, :half_size_x]
-        mask_pred3 = mask_pred3[fifth_size_y:size_y-1000, :half_size_x]
-        mask_true = mask_true[fifth_size_y:size_y-1000, :half_size_x]
+    # else:
+    #    size_y = image.shape[im_ydim]
+    #    fifth_size_y = image.shape[im_ydim]//5
+    #    half_size_x = image.shape[1+im_ydim]//2
+    #    y0 = y0-fifth_size_y*dy
+       # if im_ydim ==1:
+       #     image = image[:,:size_y-1000, :half_size_x]
+       # else:
+       #     image = image[:size_y-1000, :half_size_x]
+       # mask_pred_conf = mask_pred_conf[:size_y-1000, :half_size_x]
+       # mask_pred = mask_pred[:size_y-1000, :half_size_x]
+       # mask_pred2 = mask_pred2[:size_y-1000, :half_size_x]
+       # mask_pred3 = mask_pred3[:size_y-1000, :half_size_x]
+       # mask_true = mask_true[:size_y-1000, :half_size_x]
 
 
     if len(mask_pred.shape) <3:

@@ -393,8 +393,7 @@ def get_args():
     parser.add_argument("--rth", type=float, default=0.25)
     parser.add_argument("--add_gt_polygs", action="store_true", default=False)
     parser.add_argument("--gt_polygons_file_path", type=str, default="sub_20231001.shp")
-    parser.add_argument("--align_frames", action="store_true")
-    parser.add_argument("--unioned_mask", action="store_true")
+    parser.add_argument("--unified_mask", action="store_true")
     parser.add_argument("--k_prevs", type=int, default=0)
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--x_pxls_offset", type=int, default=3000)
@@ -520,7 +519,7 @@ if __name__ == "__main__":
         if args.add_gt_polygs:
             gdf = gpd.read_file(args.gt_polygons_file_path)
 
-            if args.unioned_mask and args.k_prevs > 0:
+            if args.unified_mask and args.k_prevs > 0:
                 curr_and_prevs_list = [intf] + prev_dict[intf]["prevs"]
             else:
                 curr_and_prevs_list = [intf]

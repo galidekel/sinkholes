@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
-import os, sys, json, pickle, logging, glob
+"""
+test_full_intf_v2.py — Predict & reconstruct interferograms.
+
+Coordinate fix vs test_full_intf.py:
+  - reconstruct_intf_prediction() now takes offset_x (no more hardcoded 3000).
+  - Reads patch_coords.json produced by prepare_intrfrgrm_pathches_v2.py to get
+    the exact geographic origin (x0_patch, y0_patch) of each intf's patch array.
+  - All lon/lat-sensitive operations (LiDAR rasterization, polygon conversion, plot
+    extents) use that origin directly with offset_x=0 — no second offset application.
+"""
+
+import os, sys, json, pickle, logging
 from datetime import datetime
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import geopandas as gpd
 import rasterio
@@ -15,11 +25,9 @@ from attn_unet import AttentionUNet
 from polygs import plg_indx2longlat, mask_array_to_polygons
 from get_intf_info import get_intf_coords, find_11day_sequences
 
-# ----------------------------- utils -----------------------------
 def str2bool(arg: str) -> bool:
     return str(arg).strip().lower() == "true"
 
-# ---------------- reconstruct with multi-LiDAR gating ------------
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -42,11 +50,16 @@ def reconstruct_intf_prediction(
     overlay_on_preds=True,
     device=None,
     treat_nodata_regions=False,
-    # ---- NEW: optional blending for predictions only ----
     blend=None,             # None | 'hann'
     pred_blend_dtype='float32',
-    window_gamma = 1.0,
-    blend_space = 'prob'
+    window_gamma=1.0,
+    blend_space='prob',
+    # ------------------------------------------------------------------
+    # offset_x: number of columns by which the patch array is shifted
+    # relative to x0 in intf_coords.  Pass 0 when intf_coords already
+    # carries x0_patch (i.e. x0_frame + offset_x*dx computed in prepare).
+    # ------------------------------------------------------------------
+    offset_x=0,
 ):
     """
     Returns (if mask is not None):
@@ -54,32 +67,30 @@ def reconstruct_intf_prediction(
     Else:
       reconstructed_intf, reconstructed_pred, reconstructed_prevs
     """
-    # unpack coords (keep your ordering)
     x0, y0, dx, dy, ncells, nlines, x4000, x8500, current_lidar_mask, num_nonz_p, bo, frame = intf_coords
     patch_H, patch_W = patch_size
 
-    # normalize shape
-    if data.ndim == 5:  # (C, ny, nx, H, W)
+    # Geographic longitude of reconstruction pixel column 0.
+    x_recon_origin = x0 + offset_x * dx
+
+    if data.ndim == 5:
         C, ny, nx, H, W = data.shape
         data_stack = data.astype(np.float32, copy=False)
-    else:               # (ny, nx, H, W)
+    else:
         ny, nx, H, W = data.shape
         C = 1
         data_stack = data[None].astype(np.float32, copy=False)
 
-    # output sizes (original formula)
     out_h = ny * patch_H // stride + patch_H * (1 - 1 // stride)
     out_w = nx * patch_W // stride + patch_W * (1 - 1 // stride)
 
-    # --- accumulators (original for intf & mask) ---
     reconstructed_intf_all = np.zeros((C, out_h, out_w), dtype=np.float32)
-    reconstructed_pred_raw = np.zeros((out_h, out_w), dtype=np.float32)  # used only when blend is None
+    reconstructed_pred_raw = np.zeros((out_h, out_w), dtype=np.float32)
     reconstructed_mask     = np.zeros((out_h, out_w), dtype=np.float32) if mask is not None else None
 
-    # --- optional blending only for predictions ---
     use_hann = (blend == 'hann')
     if use_hann:
-        def get_hann_window(h, w,gamma=1.0):
+        def get_hann_window(h, w, gamma=1.0):
             wy = np.hanning(h) if h > 1 else np.ones(1, dtype=np.float32)
             wx = np.hanning(w) if w > 1 else np.ones(1, dtype=np.float32)
             W  = (wy[:, None] * wx[None, :]).astype(np.float32)
@@ -87,21 +98,18 @@ def reconstruct_intf_prediction(
                 W = np.power(W, gamma, dtype=np.float32)
             return W / (W.max() + 1e-8)
 
-        Wn = get_hann_window(patch_H, patch_W,gamma=window_gamma)
-        # allow reduced precision to cut RAM if needed
+        Wn = get_hann_window(patch_H, patch_W, gamma=window_gamma)
         dtype_np = np.float16 if str(pred_blend_dtype).lower() == 'float16' else np.float32
         Wn = Wn.astype(dtype_np, copy=False)
         pred_num = np.zeros((out_h, out_w), dtype=dtype_np)
         pred_den = np.zeros((out_h, out_w), dtype=dtype_np)
 
-    # -------- LiDAR mask(s): AND across time steps --------
-    rasterized_polygon_current = None  # for overlay (channel 0)
+    rasterized_polygon_current = None
     mask_polyg_current = None
-    mask_all = None  # (C, out_h, out_w) uint8
+    mask_all = None
 
     if add_lidar_mask:
         lidar_gdf = gpd.read_file('lidar_mask_polygs.shp')
-        # sources list
         if lidar_sources is None:
             srcs = [current_lidar_mask] * C
         else:
@@ -111,7 +119,9 @@ def reconstruct_intf_prediction(
                 srcs = [current_lidar_mask] * C
 
         mask_all = np.zeros((C, out_h, out_w), dtype=np.uint8)
-        tr = rasterio.transform.from_origin(x0, y0, dx, dy)
+        # Use x_recon_origin (= x0 + offset_x*dx) as the geographic west edge of the
+        # reconstructed image so the LiDAR mask is rasterized onto the correct grid.
+        tr = rasterio.transform.from_origin(x_recon_origin, y0, dx, dy)
 
         for c, src in enumerate(srcs):
             if src is None or str(src).strip().lower() in ("", "none", "null"):
@@ -135,7 +145,6 @@ def reconstruct_intf_prediction(
                 rasterized_polygon_current = mask_all[c].copy()
                 mask_polyg_current = polyg
 
-    # -------- main reconstruction --------
     step_y = patch_H // stride
     step_x = patch_W // stride
 
@@ -145,14 +154,12 @@ def reconstruct_intf_prediction(
             y0o = i * step_y; y1o = y0o + patch_H
             x0o = j * step_x; x1o = x0o + patch_W
 
-            # accumulate all channels (original averaging)
             for c in range(C):
                 reconstructed_intf_all[c, y0o:y1o, x0o:x1o] += data_stack[c, i, j] / (stride**2)
 
             if reconstructed_mask is not None:
                 reconstructed_mask[y0o:y1o, x0o:x1o] += mask[i, j] / (stride**2)
 
-            # LiDAR gating: must be inside ALL time-step masks for the whole patch
             is_within_mask = True
             if add_lidar_mask and (mask_all is not None):
                 is_within_mask = mask_all[:, y0o:y1o, x0o:x1o].all()
@@ -160,34 +167,29 @@ def reconstruct_intf_prediction(
             if not is_within_mask:
                 continue
 
-            # Build (1, C or 2C, H, W) for net and predict
-            x_np = data_stack[:, i, j]  # (C, H, W)
+            x_np = data_stack[:, i, j]
 
             if treat_nodata_regions:
                 tol = 1e-9
                 if np.isnan(x_np).any():
                     x_np = np.nan_to_num(x_np, nan=0.0)
-                v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)  # (C, H, W), 1=valid, 0=no-data
-                x_np = np.concatenate([x_np, v_np], axis=0)  # (2C, H, W)
+                v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)
+                x_np = np.concatenate([x_np, v_np], axis=0)
 
             image = torch.from_numpy(x_np[None]).to(device=device, memory_format=torch.channels_last)
             with torch.no_grad():
                 logits = net(image)
-                prob = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)  # (H, W)
+                prob = torch.sigmoid(logits).squeeze().cpu().numpy().astype(np.float32)
 
-            # --- paste predictions
             if use_hann:
-                # blend probabilities only (no extra buffers for intf/mask)
                 pred_num[y0o:y1o, x0o:x1o] += (prob.astype(pred_blend_dtype) if pred_blend_dtype=='float16' else prob) * Wn
                 pred_den[y0o:y1o, x0o:x1o] += Wn
             else:
-                # original accumulation
                 reconstructed_pred_raw[y0o:y1o, x0o:x1o] += prob / (stride**2)
 
-    # ---- finalize prediction map
     if use_hann:
         eps = 1e-8
-        reconstructed_pred = (pred_num / (pred_den + eps)).astype(np.float32)  # back to f32
+        reconstructed_pred = (pred_num / (pred_den + eps)).astype(np.float32)
     else:
         reconstructed_pred = reconstructed_pred_raw
 
@@ -195,9 +197,11 @@ def reconstruct_intf_prediction(
     reconstructed_intf    = reconstructed_intf_all[0]
     reconstructed_prevs   = reconstructed_intf_all[1:] if C > 1 else None
 
-    # -------- optional quick plot (overlay current LiDAR) --------
     if plot:
-        extent = [x0, x0 + dx * out_w, y0 - dy * out_h, y0]
+        extent = [x_recon_origin,
+                  x_recon_origin + dx * out_w,
+                  y0 - dy * out_h,
+                  y0]
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6), sharex=True, sharey=True)
         fig.subplots_adjust(wspace=0.02)
 
@@ -243,7 +247,7 @@ def get_pred_args():
     p.add_argument('--patch_size', nargs='+', type=int, default=[200, 100])
     p.add_argument('--days_diff', type=int, default=11)
 
-    p.add_argument('--intf_source', type=str, default='intf_list', choices=['intf_list','test_dataset','preset','all'])
+    p.add_argument('--intf_source', type=str, default='intf_list', choices=['intf_list', 'test_dataset', 'preset', 'all'])
     p.add_argument('--intf_list', type=str, default=None)
     p.add_argument('--test_dataset', type=str, default=None)
     p.add_argument('--valset_from_partition', type=str, default=None)
@@ -255,20 +259,12 @@ def get_pred_args():
     p.add_argument('--add_lidar_mask', type=str, default='True')
     p.add_argument('--plot', action='store_true')
     p.add_argument('--attn_unet', action='store_true')
+    p.add_argument('--years_22_23', action='store_true')
     p.add_argument('--unioned_mask', action='store_true')
     p.add_argument('--k_prevs', type=int, default=0)
     p.add_argument('--treat_nodata_regions', action='store_true')
-    p.add_argument('--blend_type', type=str, default=None,choices=['hann','center-crop'])
-    p.add_argument('--window_gamma', type=float,default=1.0)
-    p.add_argument('--year_range', nargs=2, type=int, default=[2019, 2023],
-                   metavar=('YEAR_START', 'YEAR_END'),
-                   help='Filter intfs to this year range (inclusive) when --intf_source all')
-    p.add_argument('--save_confidence', action='store_true',
-                   help='Save confidence map (*_pred.npy) for every intf')
-    p.add_argument('--replicate_input', action='store_true',
-                   help='Repeat current intf for all k_prevs channels instead of loading previous intfs')
-    p.add_argument('--fallback_replicate', action='store_true',
-                   help='When predecessors are missing, replicate current intf instead of skipping')
+    p.add_argument('--blend_type', type=str, default=None, choices=['hann', 'center-crop'])
+    p.add_argument('--window_gamma', type=float, default=1.0)
 
     return p.parse_args()
 
@@ -297,7 +293,6 @@ if __name__ == '__main__':
     logging.info(f'Script: {os.path.abspath(__file__)}')
     logging.info('Running job {} with model {}.pth and args: {}'.format(job_name, model_name, args))
 
-    # choose interferograms list
     if (args.intf_source == 'intf_list' and args.intf_list is None) or \
        (args.intf_source == 'test_dataset' and args.test_dataset is None) or \
        (args.intf_source == 'preset' and args.valset_from_partition is None):
@@ -311,7 +306,7 @@ if __name__ == '__main__':
             loaded = json.load(f)
         intf_list = loaded['val']
     elif args.intf_source == 'all':
-        intf_list = []  # populated below after data_dir is constructed
+        intf_list = []
     else:
         with open('./test_data/' + args.test_dataset, 'rb') as f:
             test_data = pickle.load(f)
@@ -319,8 +314,8 @@ if __name__ == '__main__':
     num_c = args.k_prevs + 1
 
     if args.treat_nodata_regions:
-        num_c = num_c*2
-    # model
+        num_c = num_c * 2
+
     net = UNet(n_channels=num_c, n_classes=1, bilinear=False)
     if args.attn_unet:
         net = AttentionUNet(n_channels=num_c, n_classes=1, bilinear=False)
@@ -329,79 +324,89 @@ if __name__ == '__main__':
     logging.info(f'Loading model {args.model} on device {device}')
     net.to(device=device)
     state_dict = torch.load('./models/' + args.model, map_location=device)
-    _ = state_dict.pop('mask_values', [0, 1])  # unused here
+    _ = state_dict.pop('mask_values', [0, 1])
     net.load_state_dict(state_dict); net.eval()
 
-    # data dirs
     patch_H, patch_W = args.patch_size
     data_dir = os.path.join(
         args.input_patch_dir,
         f'data_patches_H{patch_H}_W{patch_W}_strpp{args.data_stride}'
-        f'_{args.days_diff}days_Aligned'
+        f'_{args.days_diff}days' + ('_22_23' if args.years_22_23 else '') + '_Aligned'
     )
     mask_dir = os.path.join(
         args.input_patch_dir,
         f'mask_patches_H{patch_H}_W{patch_W}_strpp{args.data_stride}'
-        f'_{args.days_diff}days_Aligned'
+        f'_{args.days_diff}days' + ('_22_23' if args.years_22_23 else '') + '_Aligned'
     )
 
+    # Load the coordinate metadata saved by prepare_intrfrgrm_pathches_v2.py.
+    # It records x0_patch and y0_patch: the exact geographic lon/lat of pixel (col=0, row=0)
+    # in the patch array for each interferogram.
+    coords_json_path = os.path.join(data_dir, "patch_coords.json")
+    if not os.path.exists(coords_json_path):
+        logging.error(
+            f"patch_coords.json not found in {data_dir}.\n"
+            "Run prepare_intrfrgrm_pathches_v2.py to generate it."
+        )
+        sys.exit(1)
+    with open(coords_json_path, 'r') as f:
+        patch_coords_dict = json.load(f)
+
     if args.intf_source == 'all':
-        yr0, yr1 = args.year_range
         intf_list = sorted(set(
             f[13:30] for f in os.listdir(data_dir) if f.endswith('.npy')
-            and 'nonz' not in f
-            and yr0 <= int(f[13:17]) <= yr1
         ))
-        logging.info(f'Year range {yr0}-{yr1}: found {len(intf_list)} interferograms')
 
-    # prev sequences
     prev_dict = None
-    if args.k_prevs > 0 and not args.replicate_input:
+    if args.k_prevs > 0:
         with open('intf_coord.json', "r") as f:
             intf_info = json.load(f)
-        prev_dict, updated = find_11day_sequences(intf_info, k_prev=args.k_prevs, restrict_to=intf_list, require_current_nonz_gt0=False)
-        if not args.fallback_replicate:
-            intf_list = updated
+        prev_dict, updated = find_11day_sequences(intf_info, k_prev=args.k_prevs, restrict_to=intf_list)
+        intf_list = updated
+        if args.years_22_23:
+            intf_list = [
+                k for k in intf_list
+                if all(p.startswith('2022') for p in prev_dict[k]['prevs'])
+            ]
 
-    tol = 1e-3  # normalization tolerance
+    tol = 1e-3
 
     for intf in intf_list:
-        ic = get_intf_coords(intf)  # tuple with (x0, y0, dx, dy, ncells, nlines, x4000, x8500, lidar_mask, nonz, bo, frame)
+        ic = get_intf_coords(intf)
 
-        # align starts by frame (as in your original)
-        if ic[11] == 'North':
-            intfs_coords = (35.37, 31.79) + ic[2:]
-        else:
-            intfs_coords = (35.32, 31.44) + ic[2:]
+        if intf not in patch_coords_dict:
+            logging.warning(f"{intf} not in patch_coords.json — skipping.")
+            continue
 
-        # file paths
+        pinfo = patch_coords_dict[intf]
+        # x0_patch, y0_patch: geographic lon/lat of reconstruction array column 0, row 0.
+        # These already incorporate the frame alignment and the column offset applied
+        # during patchification (prepare_intrfrgrm_pathches_v2.py).
+        x0_patch  = pinfo["x0_patch"]
+        y0_patch  = pinfo["y0_patch"]
+        dx        = pinfo["dx"]
+        dy        = pinfo["dy"]
+
+        # Build intfs_coords with x0_patch as x0 so that reconstruct_intf_prediction
+        # uses the correct geographic origin with offset_x=0.
+        intfs_coords = (x0_patch, y0_patch) + ic[2:]
+
         data_fn = f'data_patches_{intf}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'
         mask_fn = f'mask_patches_{intf}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'
         data_path = os.path.join(data_dir, data_fn)
         mask_path = os.path.join(mask_dir, mask_fn)
 
-        # load current
-        cur = np.load(data_path).astype(np.float32)  # [ny, nx, H, W]
+        cur = np.load(data_path).astype(np.float32)
 
-        # build channel stack (current + prevs), normalize per-channel only if not 0..1
         if args.k_prevs > 0:
-            if args.replicate_input or (args.fallback_replicate and intf not in prev_dict):
-                pa = [cur] * (args.k_prevs + 1)
-            else:
-                prev_ids = prev_dict[intf]['prevs'][:args.k_prevs][::-1]  # newest-first
-                available = [pid for pid in prev_ids
-                             if os.path.exists(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'))]
-                prevs = [
-                    np.load(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
-                           ).astype(np.float32)
-                    for pid in available
-                ]
-                # pad missing predecessors with current intf
-                while len(prevs) < args.k_prevs:
-                    prevs.append(cur)
-                pa = [cur] + prevs
+            prev_ids = prev_dict[intf]['prevs'][:args.k_prevs][::-1]
+            prevs = [
+                np.load(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
+                       ).astype(np.float32)
+                for pid in prev_ids
+            ]
+            pa = [cur] + prevs
 
-            # crop to common overlap (bottom/right only)
             ny = min(p.shape[0] for p in pa)
             nx = min(p.shape[1] for p in pa)
             Hc, Wc = pa[0].shape[2], pa[0].shape[3]
@@ -417,7 +422,7 @@ if __name__ == '__main__':
                     normed.append(q)
                 else:
                     normed.append((pc + np.pi) / (2 * np.pi))
-            data = np.stack(normed, axis=0).astype(np.float32)  # (C, ny, nx, H, W)
+            data = np.stack(normed, axis=0).astype(np.float32)
 
         else:
             mn, mx = float(np.nanmin(cur)), float(np.nanmax(cur))
@@ -430,9 +435,8 @@ if __name__ == '__main__':
                 data = ((cur + np.pi) / (2 * np.pi))[None]
             ny, nx, Hc, Wc = cur.shape
 
-        # target mask (unioned over time if requested)
         mask_cur = np.load(mask_path).astype(np.float32)
-        if args.k_prevs > 0 and not args.replicate_input:
+        if args.k_prevs > 0:
             prev_mask_paths = [
                 os.path.join(mask_dir, f'mask_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
                 for pid in prev_ids
@@ -447,15 +451,14 @@ if __name__ == '__main__':
 
         logging.info(f"{mask_fn} shape used: {mask.shape}")
 
-        # --- LiDAR sources list for current+prevs (for AND gating) ---
-        cur_lm = ic[8]  # current lidar source from dict
+        cur_lm = ic[8]
         lidar_sources = [cur_lm]
-        if args.k_prevs > 0 and not args.replicate_input:
+        if args.k_prevs > 0:
             for pid in prev_ids:
                 pic = get_intf_coords(pid)
                 lidar_sources.append(pic[8])
 
-        # reconstruct & predict
+        # offset_x=0 because intfs_coords already has x0=x0_patch (the patch origin).
         out = reconstruct_intf_prediction(
             data, intfs_coords, net, (patch_H, patch_W),
             args.data_stride, args.recon_th, mask,
@@ -466,7 +469,8 @@ if __name__ == '__main__':
             device=device,
             treat_nodata_regions=args.treat_nodata_regions,
             blend=args.blend_type,
-            window_gamma=args.window_gamma
+            window_gamma=args.window_gamma,
+            offset_x=0,
         )
 
         if mask is None:
@@ -477,32 +481,26 @@ if __name__ == '__main__':
             reconstructed_intf_all, reconstructed_mask, reconstructed_pred_th, reconstructed_pred, reconstructed_prevs = out
             reconstructed_intf = reconstructed_intf_all[0]
 
-        # polygons from predicted threshold
-        # x0_ is the aligned frame origin (35.3 N / 35.25 S), matching prepare_intrfrgrm_pathches.py
-        x0_, y0_, dx_, dy_, *_ = intfs_coords
-        polygons = plg_indx2longlat(mask_array_to_polygons(reconstructed_pred_th), intfs_coords,
-                                    x_start=x0_)
+        # x0_patch is the geographic longitude of reconstruction column 0.
+        # Polygon pixel indices map directly to lon/lat via x0_patch + col*dx, y0_patch - row*dy.
+        polygons = plg_indx2longlat(
+            mask_array_to_polygons(reconstructed_pred_th),
+            intfs_coords,
+            x_start=x0_patch,
+        )
         shp_path = os.path.join(output_polyg_dir, f'{intf}_predicted_polygs.shp')
         polygons.to_file(shp_path)
 
-        # save arrays
         prefix = os.path.join(output_path, intf)
-        # new — always save a single (C, H, W) image stack: current (0) + prevs (1..C-1)
         if mask is None:
-            # out == (reconstructed_intf, reconstructed_pred, reconstructed_prevs)
-            # build the stack manually
             if reconstructed_prevs is None:
-                image_to_save = reconstructed_intf[None].astype(np.float32)  # (1,H,W)
+                image_to_save = reconstructed_intf[None].astype(np.float32)
             else:
                 image_to_save = np.concatenate(
                     [reconstructed_intf[None], reconstructed_prevs], axis=0
-                ).astype(np.float32)  # (C,H,W)
+                ).astype(np.float32)
         else:
-            # out == (reconstructed_intf_all, reconstructed_mask, reconstructed_pred_th, reconstructed_pred, reconstructed_prevs)
-            # we already have the full stack from the function
-            image_to_save = reconstructed_intf_all.astype(np.float32)  # (C,H,W)
-        if args.save_confidence:
-            np.save(prefix + '_pred', reconstructed_pred)
+            image_to_save = reconstructed_intf_all.astype(np.float32)
         if args.intf_source != 'all':
             np.save(prefix + '_image', image_to_save)
             np.save(prefix + '_pred_th', reconstructed_pred_th)
@@ -510,7 +508,6 @@ if __name__ == '__main__':
             if reconstructed_mask is not None:
                 np.save(prefix + '_gt', reconstructed_mask)
 
-        # quick panel plot (optional)
         if args.plot:
             k_prev = 0 if reconstructed_prevs is None else reconstructed_prevs.shape[0]
             has_mask = reconstructed_mask is not None
@@ -518,8 +515,10 @@ if __name__ == '__main__':
             fig, axes = plt.subplots(1, ncols, figsize=(4 * ncols, 5), sharex=True, sharey=True)
             axes = np.atleast_1d(axes)
 
-            extent = [x0_, x0_ + dx_ * reconstructed_intf.shape[1],
-                      y0_ - dy_ * reconstructed_intf.shape[0], y0_]
+            extent = [x0_patch,
+                      x0_patch + dx * reconstructed_intf.shape[1],
+                      y0_patch - dy * reconstructed_intf.shape[0],
+                      y0_patch]
 
             col = 0
             axes[col].imshow(reconstructed_intf, extent=extent, cmap='jet'); axes[col].set_title('Current'); col += 1
@@ -532,35 +531,3 @@ if __name__ == '__main__':
             axes[col].imshow(reconstructed_pred_th, extent=extent, cmap='binary', vmin=0, vmax=1); axes[col].set_title('Pred mask')
 
             plt.tight_layout(); plt.show()
-
-    # ── merge all per-intf shapefiles into one combined shapefile ──────────────
-    with open('intf_coord.json') as _f:
-        _intf_info = json.load(_f)
-
-    _shp_files = sorted(glob.glob(os.path.join(output_polyg_dir, '*.shp')))
-    logging.info(f'Merging {len(_shp_files)} per-intf shapefiles into combined output')
-    _gdfs = []
-    for _shp in _shp_files:
-        _gdf = gpd.read_file(_shp)
-        if _gdf.empty:
-            continue
-        _key = os.path.basename(_shp)[:17]          # YYYYMMDD_YYYYMMDD
-        _info = _intf_info.get(_key, {})
-        _frame = _info.get('frame', '')
-        _track = 'asc' if _frame == 'North' else ('desc' if _frame == 'South' else None)
-        _gdf['intf_key']   = _key
-        _gdf['start_date'] = _key[:8]
-        _gdf['end_date']   = _key[9:]
-        _gdf['track']      = _track
-        _gdfs.append(_gdf)
-
-    if _gdfs:
-        _combined = gpd.GeoDataFrame(pd.concat(_gdfs, ignore_index=True), crs=_gdfs[0].crs)
-        _combined = _combined[_combined.geometry.notna() & ~_combined.geometry.is_empty]
-        yr0, yr1 = args.year_range
-        _combined_path = os.path.join(output_path, f'{model_name}_{yr0}_{yr1}_combined.shp')
-        _combined.to_file(_combined_path)
-        logging.info(f'Combined shapefile → {_combined_path} ({len(_combined)} polygons, {_combined["intf_key"].nunique()} intfs)')
-    else:
-        logging.warning('No shapefiles found to merge — combined output skipped')
-
