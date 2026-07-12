@@ -265,6 +265,8 @@ def get_pred_args():
                    help='Filter intfs to this year range (inclusive) when --intf_source all')
     p.add_argument('--save_confidence', action='store_true',
                    help='Save confidence map (*_pred.npy) for every intf')
+    p.add_argument('--merge_polygs', action='store_true',
+                   help='Merge all per-intf predicted polygons into one combined shapefile')
     p.add_argument('--replicate_input', action='store_true',
                    help='Repeat current intf for all k_prevs channels instead of loading previous intfs')
     p.add_argument('--fallback_replicate', action='store_true',
@@ -534,33 +536,34 @@ if __name__ == '__main__':
             plt.tight_layout(); plt.show()
 
     # ── merge all per-intf shapefiles into one combined shapefile ──────────────
-    with open('intf_coord.json') as _f:
-        _intf_info = json.load(_f)
+    if args.merge_polygs:
+        with open('intf_coord.json') as _f:
+            _intf_info = json.load(_f)
 
-    _shp_files = sorted(glob.glob(os.path.join(output_polyg_dir, '*.shp')))
-    logging.info(f'Merging {len(_shp_files)} per-intf shapefiles into combined output')
-    _gdfs = []
-    for _shp in _shp_files:
-        _gdf = gpd.read_file(_shp)
-        if _gdf.empty:
-            continue
-        _key = os.path.basename(_shp)[:17]          # YYYYMMDD_YYYYMMDD
-        _info = _intf_info.get(_key, {})
-        _frame = _info.get('frame', '')
-        _track = 'asc' if _frame == 'North' else ('desc' if _frame == 'South' else None)
-        _gdf['intf_key']   = _key
-        _gdf['start_date'] = _key[:8]
-        _gdf['end_date']   = _key[9:]
-        _gdf['track']      = _track
-        _gdfs.append(_gdf)
+        _shp_files = sorted(glob.glob(os.path.join(output_polyg_dir, '*.shp')))
+        logging.info(f'Merging {len(_shp_files)} per-intf shapefiles into combined output')
+        _gdfs = []
+        for _shp in _shp_files:
+            _gdf = gpd.read_file(_shp)
+            if _gdf.empty:
+                continue
+            _key = os.path.basename(_shp)[:17]          # YYYYMMDD_YYYYMMDD
+            _info = _intf_info.get(_key, {})
+            _frame = _info.get('frame', '')
+            _track = 'asc' if _frame == 'North' else ('desc' if _frame == 'South' else None)
+            _gdf['intf_key']   = _key
+            _gdf['start_date'] = _key[:8]
+            _gdf['end_date']   = _key[9:]
+            _gdf['track']      = _track
+            _gdfs.append(_gdf)
 
-    if _gdfs:
-        _combined = gpd.GeoDataFrame(pd.concat(_gdfs, ignore_index=True), crs=_gdfs[0].crs)
-        _combined = _combined[_combined.geometry.notna() & ~_combined.geometry.is_empty]
-        yr0, yr1 = args.year_range
-        _combined_path = os.path.join(output_path, f'{model_name}_{yr0}_{yr1}_combined.shp')
-        _combined.to_file(_combined_path)
-        logging.info(f'Combined shapefile → {_combined_path} ({len(_combined)} polygons, {_combined["intf_key"].nunique()} intfs)')
-    else:
-        logging.warning('No shapefiles found to merge — combined output skipped')
+        if _gdfs:
+            _combined = gpd.GeoDataFrame(pd.concat(_gdfs, ignore_index=True), crs=_gdfs[0].crs)
+            _combined = _combined[_combined.geometry.notna() & ~_combined.geometry.is_empty]
+            yr0, yr1 = args.year_range
+            _combined_path = os.path.join(output_path, f'{model_name}_{yr0}_{yr1}_combined.shp')
+            _combined.to_file(_combined_path)
+            logging.info(f'Combined shapefile → {_combined_path} ({len(_combined)} polygons, {_combined["intf_key"].nunique()} intfs)')
+        else:
+            logging.warning('No shapefiles found to merge — combined output skipped')
 
