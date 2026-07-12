@@ -298,8 +298,8 @@ PAGE = """<!DOCTYPE html>
   <b id="title">-</b>
   <span id="pos"></span>
   <select id="cmap">
-    <option value="gray" selected>gray</option>
-    <option value="jet">jet</option>
+    <option value="jet" selected>jet</option>
+    <option value="gray">gray</option>
     <option value="twilight">twilight</option>
     <option value="RdBu">RdBu</option>
   </select>
