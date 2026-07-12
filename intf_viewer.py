@@ -75,6 +75,9 @@ def get_args():
     p.add_argument('--raw_polygs', action='store_true',
                    help='serve polygon coordinates as-is, without the legacy '
                         'x4000-origin lon correction')
+    p.add_argument('--gt_polyg_path', type=str,
+                   default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20231001.shp',
+                   help='mapped subsidence GT polygons shapefile')
     return p.parse_args()
 
 
@@ -142,6 +145,27 @@ if ARGS.polyg_path:
         logging.info('polygons: %d features from %s (crs: %s, columns: %s)',
                      len(POLYG_GDF), ARGS.polyg_path, POLYG_GDF.crs,
                      list(POLYG_GDF.columns))
+
+
+GT_GDF = None
+if ARGS.gt_polyg_path and os.path.exists(ARGS.gt_polyg_path):
+    import geopandas as gpd
+    GT_GDF = _to_lonlat(gpd.read_file(ARGS.gt_polyg_path))
+    logging.info('GT polygons: %d features from %s', len(GT_GDF), ARGS.gt_polyg_path)
+else:
+    logging.warning('GT polygons file not found: %s', ARGS.gt_polyg_path)
+
+
+def gt_geojson(key):
+    """GT subsidence polygons matching this intf's date pair (as in patch prep)."""
+    empty = '{"type":"FeatureCollection","features":[]}'
+    if GT_GDF is None:
+        return empty
+    sd, ed = key.split('_')
+    g = GT_GDF
+    norm = lambda col: g[col].astype(str).str.replace('-', '', regex=False)
+    sel = g[(norm('start_date') == sd) & (norm('end_date') == ed)]
+    return sel.to_json() if len(sel) else empty
 
 
 def polyg_lon_correction(key):
@@ -305,6 +329,8 @@ PAGE = """<!DOCTYPE html>
   </select>
   <label><input type="checkbox" id="showpoly" checked> polygons (p)</label>
   <span id="npoly" style="color:#fff"></span>
+  <label><input type="checkbox" id="showgt"> GT (t)</label>
+  <span id="ngt" style="color:#fd0"></span>
   <label><input type="checkbox" id="showgrid" checked> grid (g)</label>
   <span id="cursorpos" style="color:#9cf; min-width:150px"></span>
   <button id="boxzoom">box zoom (z)</button>
@@ -317,7 +343,7 @@ PAGE = """<!DOCTYPE html>
 const map = L.map('map', {crs: L.CRS.Simple, minZoom: 6, maxZoom: 19,
                           zoomSnap: 0.25, zoomDelta: 0.5});
 let seqs = null, frame = 'North', idx = 0;
-let overlay = null, polyLayer = null, firstLoad = true;
+let overlay = null, polyLayer = null, gtLayer = null, firstLoad = true;
 
 function key() { return seqs[frame][idx]; }
 
@@ -353,6 +379,14 @@ async function load(fit) {
   const n = gj.features ? gj.features.length : 0;
   document.getElementById('npoly').textContent = n ? n + ' polygs' : 'no polygs';
   if (document.getElementById('showpoly').checked) polyLayer.addTo(map);
+
+  if (gtLayer) { map.removeLayer(gtLayer); gtLayer = null; }
+  const gt = await (await fetch('/api/gt/' + k)).json();
+  gtLayer = L.geoJSON(gt, {style: {color:'#ffdd00', weight:2,
+                                   fillColor:'#ffdd00', fillOpacity:0.15}});
+  const ng = gt.features ? gt.features.length : 0;
+  document.getElementById('ngt').textContent = ng ? ng + ' GT' : 'no GT';
+  if (document.getElementById('showgt').checked) gtLayer.addTo(map);
 }
 
 function step(d) {
@@ -410,6 +444,10 @@ document.getElementById('showpoly').onchange = (e) => {
   if (!polyLayer) return;
   e.target.checked ? polyLayer.addTo(map) : map.removeLayer(polyLayer);
 };
+document.getElementById('showgt').onchange = (e) => {
+  if (!gtLayer) return;
+  e.target.checked ? gtLayer.addTo(map) : map.removeLayer(gtLayer);
+};
 document.querySelectorAll('input[name=frame]').forEach(r =>
   r.onchange = () => switchFrame(r.value));
 document.addEventListener('keydown', (e) => {
@@ -422,6 +460,10 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'g' || e.key === 'G') {
     const c = document.getElementById('showgrid');
     c.checked = !c.checked; drawGrid();
+  }
+  else if (e.key === 't' || e.key === 'T') {
+    const c = document.getElementById('showgt');
+    c.checked = !c.checked; c.dispatchEvent(new Event('change'));
   }
   else if (e.key === 'p' || e.key === 'P') {
     const c = document.getElementById('showpoly');
@@ -497,6 +539,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, body, 'application/json')
             elif parts[:2] == ['api', 'polygs'] and len(parts) == 3:
                 self._send(200, polygons_geojson(parts[2]).encode(), 'application/json')
+            elif parts[:2] == ['api', 'gt'] and len(parts) == 3:
+                self._send(200, gt_geojson(parts[2]).encode(), 'application/json')
             elif parts[:2] == ['api', 'image'] and len(parts) == 3:
                 cmap = parse_qs(url.query).get('cmap', ['gray'])[0]
                 path = render_image(parts[2], cmap)
