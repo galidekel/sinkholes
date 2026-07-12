@@ -39,14 +39,14 @@ python train_sinkholes_unet.py
 Main behavior:
 
 - **Model** — standard U-Net (`unet.py`), or Attention U-Net (`attn_unet.py`).
-- **Loss** — masked BCEwl + Dice loss. `--pos_w` gives higher weight to positive (subsidence) pixels
+- **Partition modes** — random by patch, random by interferogram, spatial split, or a preset partition file (for intf partition)
 - **Temporal context** — optionally stacks the *k* previous interferograms of the same frame as extra input channels (`--add_temporal`), giving the network the deformation history of each pixel.
-- **Partition modes** — random by patch, random by interferogram, spatial split, or a preset partition file (for intf partition) 
+- **Loss** — masked BCEwl + Dice loss. `--pos_w` gives higher weight to positive (subsidence) pixels
 - **Outputs** — a checkpoint (`*checkpoint_epoch<N>.pth`) per epoch, a log file per job, and optionally a pickled test/validation dataset for later evaluation.
 
 Run `python train_sinkholes_unet.py -h` for the full list of options.
 
-## 4. Testing
+## 3. Testing
 
 ### Patch-level (`test.py`)
 
@@ -67,7 +67,7 @@ The main evaluation path. For each test interferogram it:
 
 `evaluate_full_intf_output.py` computes precision/recall-style statistics from the saved full-interferogram outputs, and `remove_no_Data_predictions.py` filters out predictions that fall in no-data regions.
 
-## 5. Predicting on New Interferograms
+## 4. Predicting on New Interferograms
 
 **`predict_new_intf.py`** runs a trained model on interferograms *without* ground truth: it crops the scene to the model grid, reconstructs the full prediction, and exports the predicted sinkhole polygons as a shapefile for GIS use. `predict_new_intf_vA.py` is an alternative version of this script.
 
