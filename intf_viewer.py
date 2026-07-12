@@ -273,9 +273,10 @@ PAGE = """<!DOCTYPE html>
     <option value="RdBu">RdBu</option>
   </select>
   <label><input type="checkbox" id="showpoly" checked> polygons (p)</label>
+  <span id="npoly" style="color:#f66"></span>
   <button id="fit">fit (f)</button>
   <span id="loading">loading&#8230;</span>
-  <span style="margin-left:auto;color:#888">&#8592;/&#8594; time &nbsp; n/s frame</span>
+  <span style="margin-left:auto;color:#888">&#8592;/&#8594; time &nbsp; n/s frame &nbsp; shift+drag = box zoom</span>
 </div>
 <div id="map"></div>
 <script>
@@ -313,8 +314,10 @@ async function load(fit) {
 
   if (polyLayer) { map.removeLayer(polyLayer); polyLayer = null; }
   const gj = await (await fetch('/api/polygs/' + k)).json();
-  polyLayer = L.geoJSON(gj, {style: {color:'#ff3333', weight:1.5,
-                                     fillColor:'#ff3333', fillOpacity:0.08}});
+  polyLayer = L.geoJSON(gj, {style: {color:'#ff2222', weight:2,
+                                     fillColor:'#ff2222', fillOpacity:0.3}});
+  const n = gj.features ? gj.features.length : 0;
+  document.getElementById('npoly').textContent = n ? n + ' polygs' : 'no polygs';
   if (document.getElementById('showpoly').checked) polyLayer.addTo(map);
 }
 
