@@ -283,7 +283,7 @@ PAGE = """<!DOCTYPE html>
   #bar label { cursor:pointer; }
   .pix { image-rendering: pixelated; }
   #loading { color:#f90; display:none; }
-  .gridlbl { color:#0ff; font:11px monospace; text-shadow:0 0 3px #000, 0 0 3px #000;
+  .gridlbl { color:#0ff; font:bold 16px monospace; text-shadow:0 0 4px #000, 0 0 4px #000, 0 0 4px #000;
              white-space:nowrap; pointer-events:none; }
 </style>
 </head>
@@ -432,7 +432,7 @@ document.addEventListener('keydown', (e) => {
 // --- lon/lat graticule -------------------------------------------------
 const gridLayer = L.layerGroup().addTo(map);
 function niceStep(span) {
-  const target = span / 6;
+  const target = span / 12;
   const p = Math.pow(10, Math.floor(Math.log10(target)));
   for (const m of [1, 2, 5, 10]) { if (m * p >= target) return m * p; }
   return 10 * p;
@@ -447,12 +447,12 @@ function drawGrid() {
   for (let x = Math.ceil(b.getWest() / step) * step; x <= b.getEast(); x += step) {
     L.polyline([[b.getSouth(), x], [b.getNorth(), x]], style).addTo(gridLayer);
     L.marker([b.getSouth(), x], {interactive:false, icon: L.divIcon({className:'gridlbl',
-      html: x.toFixed(dec), iconAnchor: [-3, 16]})}).addTo(gridLayer);
+      html: x.toFixed(dec), iconAnchor: [-4, 22]})}).addTo(gridLayer);
   }
   for (let y = Math.ceil(b.getSouth() / step) * step; y <= b.getNorth(); y += step) {
     L.polyline([[y, b.getWest()], [y, b.getEast()]], style).addTo(gridLayer);
     L.marker([y, b.getWest()], {interactive:false, icon: L.divIcon({className:'gridlbl',
-      html: y.toFixed(dec), iconAnchor: [-4, 14]})}).addTo(gridLayer);
+      html: y.toFixed(dec), iconAnchor: [-5, 20]})}).addTo(gridLayer);
   }
 }
 map.on('moveend zoomend', drawGrid);
