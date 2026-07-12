@@ -122,15 +122,23 @@ logging.info('found %d .unw files in %s', len(UNW_BY_KEY), ARGS.input_dir)
 # ----------------------------------------------------------------- polygons
 POLYG_GDF = None       # combined-shapefile mode
 POLYG_DIR = None       # per-intf-directory mode
+def _to_lonlat(gdf):
+    """Match view_intf_quick.py: display coordinates are EPSG:4326 lon/lat."""
+    if gdf.crs and gdf.crs.to_epsg() != 4326:
+        gdf = gdf.to_crs('EPSG:4326')
+    return gdf
+
+
 if ARGS.polyg_path:
     import geopandas as gpd
     if os.path.isdir(ARGS.polyg_path):
         POLYG_DIR = ARGS.polyg_path
         logging.info('polygons: per-intf directory %s', POLYG_DIR)
     else:
-        POLYG_GDF = gpd.read_file(ARGS.polyg_path)
-        logging.info('polygons: %d features from %s (columns: %s)',
-                     len(POLYG_GDF), ARGS.polyg_path, list(POLYG_GDF.columns))
+        POLYG_GDF = _to_lonlat(gpd.read_file(ARGS.polyg_path))
+        logging.info('polygons: %d features from %s (crs: %s, columns: %s)',
+                     len(POLYG_GDF), ARGS.polyg_path, POLYG_GDF.crs,
+                     list(POLYG_GDF.columns))
 
 
 def polygons_geojson(key):
@@ -151,7 +159,7 @@ def polygons_geojson(key):
         import geopandas as gpd
         hits = sorted(Path(POLYG_DIR).glob(f'*{key}*.shp'))
         if hits:
-            return gpd.read_file(hits[0]).to_json()
+            return _to_lonlat(gpd.read_file(hits[0])).to_json()
     return empty
 
 
@@ -273,7 +281,7 @@ PAGE = """<!DOCTYPE html>
     <option value="RdBu">RdBu</option>
   </select>
   <label><input type="checkbox" id="showpoly" checked> polygons (p)</label>
-  <span id="npoly" style="color:#f66"></span>
+  <span id="npoly" style="color:#fff"></span>
   <button id="fit">fit (f)</button>
   <span id="loading">loading&#8230;</span>
   <span style="margin-left:auto;color:#888">&#8592;/&#8594; time &nbsp; n/s frame &nbsp; shift+drag = box zoom</span>
@@ -314,8 +322,8 @@ async function load(fit) {
 
   if (polyLayer) { map.removeLayer(polyLayer); polyLayer = null; }
   const gj = await (await fetch('/api/polygs/' + k)).json();
-  polyLayer = L.geoJSON(gj, {style: {color:'#ff2222', weight:2,
-                                     fillColor:'#ff2222', fillOpacity:0.3}});
+  polyLayer = L.geoJSON(gj, {style: {color:'#ffffff', weight:2,
+                                     fillColor:'#ffffff', fillOpacity:0.25}});
   const n = gj.features ? gj.features.length : 0;
   document.getElementById('npoly').textContent = n ? n + ' polygs' : 'no polygs';
   if (document.getElementById('showpoly').checked) polyLayer.addTo(map);
