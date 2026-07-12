@@ -319,6 +319,7 @@ PAGE = """<!DOCTYPE html>
   </span>
   <button id="prev">&#8592; prev</button>
   <button id="next">next &#8594;</button>
+  <select id="intfsel" style="max-width:230px"></select>
   <b id="title">-</b>
   <span id="pos"></span>
   <select id="cmap">
@@ -349,6 +350,18 @@ function key() { return seqs[frame][idx]; }
 
 function fmtDate(d) { return d.slice(0,4)+'-'+d.slice(4,6)+'-'+d.slice(6,8); }
 
+function fillIntfSel() {
+  const sel = document.getElementById('intfsel');
+  sel.innerHTML = '';
+  seqs[frame].forEach((k, i) => {
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = fmtDate(k.slice(0,8)) + ' \\u2192 ' + fmtDate(k.slice(9));
+    sel.appendChild(o);
+  });
+  sel.value = idx;
+}
+
 async function load(fit) {
   const k = key();
   document.getElementById('loading').style.display = 'inline';
@@ -371,6 +384,7 @@ async function load(fit) {
       fmtDate(s) + ' \\u2192 ' + fmtDate(e) + '  (' + frame + ')';
   document.getElementById('pos').textContent =
       (idx+1) + '/' + seqs[frame].length;
+  document.getElementById('intfsel').value = idx;
 
   if (polyLayer) { map.removeLayer(polyLayer); polyLayer = null; }
   const gj = await (await fetch('/api/polygs/' + k)).json();
@@ -406,12 +420,16 @@ function switchFrame(f) {
   });
   idx = best;
   document.querySelector('input[name=frame][value='+f+']').checked = true;
+  fillIntfSel();
   load(true);
 }
 
 document.getElementById('prev').onclick = () => step(-1);
 document.getElementById('next').onclick = () => step(1);
 document.getElementById('fit').onclick = () => load(true);
+document.getElementById('intfsel').onchange = (e) => {
+  idx = parseInt(e.target.value); load(false); e.target.blur();
+};
 
 // --- box zoom: click the button (or press z), then drag a rectangle ---
 let boxMode = false, boxStart = null, boxRect = null;
@@ -507,6 +525,7 @@ map.on('mousemove', (e) => {
 fetch('/api/intfs').then(r => r.json()).then(d => {
   seqs = d;
   if (!seqs[frame].length) frame = 'South';
+  fillIntfSel();
   load(true);
 });
 </script>
