@@ -36,8 +36,16 @@ from urllib.parse import urlparse, parse_qs
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
-from matplotlib import cm
 from PIL import Image
+
+try:
+    from matplotlib import colormaps as _colormaps   # matplotlib >= 3.6
+    def get_cmap(name):
+        return _colormaps[name]
+except ImportError:                                    # older matplotlib
+    from matplotlib import cm as _cm
+    def get_cmap(name):
+        return _cm.get_cmap(name)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 
@@ -189,11 +197,18 @@ def render_image(key, cmap_name):
             lo, hi = np.percentile(data[valid], ARGS.clip_pct)
         else:
             lo, hi = 0.0, 1.0
-        norm = np.clip((data - lo) / max(hi - lo, 1e-12), 0, 1)
-
-        rgba = (cm.get_cmap(cmap_name)(norm) * 255).astype(np.uint8)
-        rgba[~valid] = 0  # no-data black
-        img = Image.fromarray(rgba[:, :, :3], mode='RGB')
+        # quantize to 8-bit indices, then colorize through a 256-entry LUT —
+        # avoids building huge float RGBA intermediates for large rasters
+        idx = np.clip((data - lo) / max(hi - lo, 1e-12), 0, 1)
+        idx = (idx * 255).astype(np.uint8)
+        if cmap_name == 'gray':
+            gray = np.where(valid, idx, 0).astype(np.uint8)
+            img = Image.fromarray(gray, mode='L')
+        else:
+            lut = (get_cmap(cmap_name)(np.linspace(0, 1, 256))[:, :3] * 255).astype(np.uint8)
+            rgb = lut[idx]
+            rgb[~valid] = 0  # no-data black
+            img = Image.fromarray(rgb, mode='RGB')
         tmp = out + '.tmp'
         if ARGS.fmt == 'jpg':
             img.save(tmp, format='JPEG', quality=87)
