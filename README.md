@@ -33,7 +33,7 @@ interferograms + subsidence polygons
 **`train_sinkholes_unet.py`** trains the segmentation network:
 
 ```bash
-python train_sinkholes_unet.py
+python train_sinkholes_unet.py (+command line args)
 ```
 
 Main behavior:
