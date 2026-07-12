@@ -297,10 +297,11 @@ PAGE = """<!DOCTYPE html>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   html, body { margin:0; height:100%; }
-  #map { position:absolute; top:44px; bottom:0; left:0; right:0; background:#111; }
-  #bar { position:absolute; top:0; height:44px; left:0; right:0; background:#1e1e1e;
-         color:#ddd; font:13px/44px sans-serif; padding:0 12px; box-sizing:border-box;
-         display:flex; gap:14px; align-items:center; z-index:1000; }
+  body { display:flex; flex-direction:column; }
+  #map { flex:1 1 0; min-height:0; background:#111; }
+  #bar { flex:0 0 auto; background:#1e1e1e;
+         color:#ddd; font:13px/22px sans-serif; padding:6px 12px; box-sizing:border-box;
+         display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; z-index:1000; }
   #bar b { color:#fff; }
   #bar button, #bar select { background:#333; color:#ddd; border:1px solid #555;
          border-radius:4px; padding:3px 10px; cursor:pointer; }
@@ -521,6 +522,7 @@ map.on('mousemove', (e) => {
   document.getElementById('cursorpos').textContent =
       e.latlng.lng.toFixed(5) + ', ' + e.latlng.lat.toFixed(5);
 });
+window.addEventListener('resize', () => map.invalidateSize());
 
 fetch('/api/intfs').then(r => r.json()).then(d => {
   seqs = d;
