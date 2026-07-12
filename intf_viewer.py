@@ -72,6 +72,9 @@ def get_args():
                    help='rendered image format (jpg = smaller/faster, png = lossless)')
     p.add_argument('--clip_pct', nargs=2, type=float, default=[2.0, 98.0],
                    help='percentile clip for display normalization')
+    p.add_argument('--raw_polygs', action='store_true',
+                   help='serve polygon coordinates as-is, without the legacy '
+                        'x4000-origin lon correction')
     return p.parse_args()
 
 
@@ -141,9 +144,23 @@ if ARGS.polyg_path:
                      list(POLYG_GDF.columns))
 
 
+def polyg_lon_correction(key):
+    """Legacy shapefiles were written with plg_indx2longlat's x_start=x4000
+    fallback, displaced a further fixed 480 px. Verified against the GT
+    polygons: dlon = frame_origin - (x0 + 4000*dx) + 0.01333, dlat = 0
+    (residual < 0.000125 deg over all 142 intfs of both frames)."""
+    info = COORD.get(key)
+    if not info:
+        return 0.0
+    fixed = 35.37 if info.get('frame') == 'North' else 35.32
+    x4000 = info['east'] + 4000 * info['dx']
+    return fixed - x4000 + 0.01333
+
+
 def polygons_geojson(key):
     """GeoJSON FeatureCollection of the predicted polygons for one intf."""
     empty = '{"type":"FeatureCollection","features":[]}'
+    sel = None
     if POLYG_GDF is not None:
         g = POLYG_GDF
         if 'intf_key' in g.columns:
@@ -154,13 +171,17 @@ def polygons_geojson(key):
             sel = g[(norm('start_date') == sd) & (norm('end_date') == ed)]
         else:
             sel = g  # no date columns: show everything
-        return sel.to_json() if len(sel) else empty
-    if POLYG_DIR is not None:
+    elif POLYG_DIR is not None:
         import geopandas as gpd
         hits = sorted(Path(POLYG_DIR).glob(f'*{key}*.shp'))
         if hits:
-            return _to_lonlat(gpd.read_file(hits[0])).to_json()
-    return empty
+            sel = _to_lonlat(gpd.read_file(hits[0]))
+    if sel is None or not len(sel):
+        return empty
+    if not ARGS.raw_polygs:
+        sel = sel.copy()
+        sel.geometry = sel.geometry.translate(xoff=polyg_lon_correction(key))
+    return sel.to_json()
 
 
 # ----------------------------------------------------------------- rendering
@@ -282,9 +303,10 @@ PAGE = """<!DOCTYPE html>
   </select>
   <label><input type="checkbox" id="showpoly" checked> polygons (p)</label>
   <span id="npoly" style="color:#fff"></span>
+  <button id="boxzoom">box zoom (z)</button>
   <button id="fit">fit (f)</button>
   <span id="loading">loading&#8230;</span>
-  <span style="margin-left:auto;color:#888">&#8592;/&#8594; time &nbsp; n/s frame &nbsp; shift+drag = box zoom</span>
+  <span style="margin-left:auto;color:#888">&#8592;/&#8594; time &nbsp; n/s frame</span>
 </div>
 <div id="map"></div>
 <script>
@@ -352,6 +374,33 @@ function switchFrame(f) {
 document.getElementById('prev').onclick = () => step(-1);
 document.getElementById('next').onclick = () => step(1);
 document.getElementById('fit').onclick = () => load(true);
+
+// --- box zoom: click the button (or press z), then drag a rectangle ---
+let boxMode = false, boxStart = null, boxRect = null;
+const bzBtn = document.getElementById('boxzoom');
+function setBoxMode(on) {
+  boxMode = on;
+  bzBtn.style.background = on ? '#c60' : '#333';
+  document.getElementById('map').style.cursor = on ? 'crosshair' : '';
+  on ? map.dragging.disable() : map.dragging.enable();
+}
+bzBtn.onclick = () => setBoxMode(!boxMode);
+map.on('mousedown', (e) => {
+  if (!boxMode) return;
+  boxStart = e.latlng;
+  boxRect = L.rectangle([boxStart, boxStart],
+                        {color:'#ffa500', weight:1.5, fill:false, dashArray:'4'}).addTo(map);
+});
+map.on('mousemove', (e) => {
+  if (boxMode && boxStart && boxRect) boxRect.setBounds(L.latLngBounds(boxStart, e.latlng));
+});
+map.on('mouseup', (e) => {
+  if (!boxMode || !boxStart) return;
+  const b = L.latLngBounds(boxStart, e.latlng);
+  map.removeLayer(boxRect); boxRect = null; boxStart = null;
+  setBoxMode(false);
+  if (b.isValid()) map.fitBounds(b);
+});
 document.getElementById('cmap').onchange = () => load(false);
 document.getElementById('showpoly').onchange = (e) => {
   if (!polyLayer) return;
@@ -365,6 +414,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'n' || e.key === 'N') switchFrame('North');
   else if (e.key === 's' || e.key === 'S') switchFrame('South');
   else if (e.key === 'f' || e.key === 'F') load(true);
+  else if (e.key === 'z' || e.key === 'Z') setBoxMode(!boxMode);
   else if (e.key === 'p' || e.key === 'P') {
     const c = document.getElementById('showpoly');
     c.checked = !c.checked; c.dispatchEvent(new Event('change'));
