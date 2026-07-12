@@ -283,6 +283,8 @@ PAGE = """<!DOCTYPE html>
   #bar label { cursor:pointer; }
   .pix { image-rendering: pixelated; }
   #loading { color:#f90; display:none; }
+  .gridlbl { color:#0ff; font:11px monospace; text-shadow:0 0 3px #000, 0 0 3px #000;
+             white-space:nowrap; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -303,6 +305,8 @@ PAGE = """<!DOCTYPE html>
   </select>
   <label><input type="checkbox" id="showpoly" checked> polygons (p)</label>
   <span id="npoly" style="color:#fff"></span>
+  <label><input type="checkbox" id="showgrid" checked> grid (g)</label>
+  <span id="cursorpos" style="color:#9cf; min-width:150px"></span>
   <button id="boxzoom">box zoom (z)</button>
   <button id="fit">fit (f)</button>
   <span id="loading">loading&#8230;</span>
@@ -415,10 +419,47 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 's' || e.key === 'S') switchFrame('South');
   else if (e.key === 'f' || e.key === 'F') load(true);
   else if (e.key === 'z' || e.key === 'Z') setBoxMode(!boxMode);
+  else if (e.key === 'g' || e.key === 'G') {
+    const c = document.getElementById('showgrid');
+    c.checked = !c.checked; drawGrid();
+  }
   else if (e.key === 'p' || e.key === 'P') {
     const c = document.getElementById('showpoly');
     c.checked = !c.checked; c.dispatchEvent(new Event('change'));
   }
+});
+
+// --- lon/lat graticule -------------------------------------------------
+const gridLayer = L.layerGroup().addTo(map);
+function niceStep(span) {
+  const target = span / 6;
+  const p = Math.pow(10, Math.floor(Math.log10(target)));
+  for (const m of [1, 2, 5, 10]) { if (m * p >= target) return m * p; }
+  return 10 * p;
+}
+function drawGrid() {
+  gridLayer.clearLayers();
+  if (!document.getElementById('showgrid').checked) return;
+  const b = map.getBounds();
+  const step = niceStep(Math.max(b.getNorth() - b.getSouth(), b.getEast() - b.getWest()));
+  const dec = Math.max(0, Math.ceil(-Math.log10(step)) + 1);
+  const style = {color:'#00e5ff', weight:0.8, opacity:0.55, interactive:false};
+  for (let x = Math.ceil(b.getWest() / step) * step; x <= b.getEast(); x += step) {
+    L.polyline([[b.getSouth(), x], [b.getNorth(), x]], style).addTo(gridLayer);
+    L.marker([b.getSouth(), x], {interactive:false, icon: L.divIcon({className:'gridlbl',
+      html: x.toFixed(dec), iconAnchor: [-3, 16]})}).addTo(gridLayer);
+  }
+  for (let y = Math.ceil(b.getSouth() / step) * step; y <= b.getNorth(); y += step) {
+    L.polyline([[y, b.getWest()], [y, b.getEast()]], style).addTo(gridLayer);
+    L.marker([y, b.getWest()], {interactive:false, icon: L.divIcon({className:'gridlbl',
+      html: y.toFixed(dec), iconAnchor: [-4, 14]})}).addTo(gridLayer);
+  }
+}
+map.on('moveend zoomend', drawGrid);
+document.getElementById('showgrid').onchange = drawGrid;
+map.on('mousemove', (e) => {
+  document.getElementById('cursorpos').textContent =
+      e.latlng.lng.toFixed(5) + ', ' + e.latlng.lat.toFixed(5);
 });
 
 fetch('/api/intfs').then(r => r.json()).then(d => {
