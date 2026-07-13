@@ -152,13 +152,12 @@ def reconstruct_intf_prediction(
             if reconstructed_mask is not None:
                 reconstructed_mask[y0o:y1o, x0o:x1o] += mask[i, j] / (stride**2)
 
-            # LiDAR gating: must be inside ALL time-step masks for the whole patch
-            is_within_mask = True
-            if add_lidar_mask and (mask_all is not None):
-                is_within_mask = mask_all[:, y0o:y1o, x0o:x1o].all()
-
-            if not is_within_mask:
-                continue
+            # Note: LiDAR coverage is no longer used to skip prediction here (that used to
+            # drop a whole patch — and its Hann contribution — whenever ANY pixel of it fell
+            # outside the survey, producing patch-sized straight-edge artifacts near the
+            # coverage boundary). Every patch is predicted and blended; coverage is applied
+            # as a per-pixel cut on the finished field below, so the boundary follows the
+            # true LiDAR polygon shape instead of the patch grid.
 
             # Build (1, C or 2C, H, W) for net and predict
             x_np = data_stack[:, i, j]  # (C, H, W)
@@ -190,6 +189,11 @@ def reconstruct_intf_prediction(
         reconstructed_pred = (pred_num / (pred_den + eps)).astype(np.float32)  # back to f32
     else:
         reconstructed_pred = reconstructed_pred_raw
+
+    # ---- per-pixel LiDAR coverage cut (applied after blending, not before predicting)
+    if add_lidar_mask and mask_all is not None:
+        pixel_valid = mask_all.all(axis=0)  # inside ALL time-step LiDAR masks, per pixel
+        reconstructed_pred = reconstructed_pred * pixel_valid
 
     reconstructed_pred_th = (reconstructed_pred > rth).astype(np.float32)
     reconstructed_intf    = reconstructed_intf_all[0]
