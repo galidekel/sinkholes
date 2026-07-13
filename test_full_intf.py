@@ -152,12 +152,14 @@ def reconstruct_intf_prediction(
             if reconstructed_mask is not None:
                 reconstructed_mask[y0o:y1o, x0o:x1o] += mask[i, j] / (stride**2)
 
-            # Note: LiDAR coverage is no longer used to skip prediction here (that used to
-            # drop a whole patch — and its Hann contribution — whenever ANY pixel of it fell
-            # outside the survey, producing patch-sized straight-edge artifacts near the
-            # coverage boundary). Every patch is predicted and blended; coverage is applied
-            # as a per-pixel cut on the finished field below, so the boundary follows the
-            # true LiDAR polygon shape instead of the patch grid.
+            # LiDAR gating: skip only patches with ZERO overlap with the surveyed area (huge
+            # compute saving, since most of a frame lies outside the coastal survey strip).
+            # Patches with partial overlap are still predicted and Hann-blended normally —
+            # the old .all() check dropped those too, wholesale, creating patch-sized
+            # straight-edge artifacts near the boundary. The exact coverage boundary is cut
+            # afterward at pixel resolution (see below), not at patch resolution here.
+            if add_lidar_mask and (mask_all is not None) and not mask_all[:, y0o:y1o, x0o:x1o].any():
+                continue
 
             # Build (1, C or 2C, H, W) for net and predict
             x_np = data_stack[:, i, j]  # (C, H, W)
