@@ -267,6 +267,10 @@ def get_pred_args():
                    help='Save confidence map (*_pred.npy) for every intf')
     p.add_argument('--replicate_input', action='store_true',
                    help='Repeat current intf for all k_prevs channels instead of loading previous intfs')
+    p.add_argument('--fallback_replicate', action='store_true',
+                   help='Keep intfs whose predecessor chain is missing/incomplete instead of '
+                        'dropping them: missing predecessors (whether absent from intf_coord.json '
+                        'or just not generated as patches) are padded by repeating the current intf')
 
     return p.parse_args()
 
@@ -358,7 +362,8 @@ if __name__ == '__main__':
         with open('intf_coord.json', "r") as f:
             intf_info = json.load(f)
         prev_dict, updated = find_11day_sequences(intf_info, k_prev=args.k_prevs, restrict_to=intf_list, require_current_nonz_gt0=False)
-        intf_list = updated
+        if not args.fallback_replicate:
+            intf_list = updated
 
     tol = 1e-3  # normalization tolerance
 
@@ -381,16 +386,22 @@ if __name__ == '__main__':
         cur = np.load(data_path).astype(np.float32)  # [ny, nx, H, W]
 
         # build channel stack (current + prevs), normalize per-channel only if not 0..1
+        available = []  # predecessors we actually have real data for (used below for mask/lidar)
         if args.k_prevs > 0:
-            if args.replicate_input:
+            if args.replicate_input or (args.fallback_replicate and intf not in prev_dict):
                 pa = [cur] * (args.k_prevs + 1)
             else:
                 prev_ids = prev_dict[intf]['prevs'][:args.k_prevs][::-1]  # newest-first
+                available = [pid for pid in prev_ids
+                             if os.path.exists(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'))]
                 prevs = [
                     np.load(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
                            ).astype(np.float32)
-                    for pid in prev_ids
+                    for pid in available
                 ]
+                # pad any predecessors missing on disk with the current intf
+                while len(prevs) < args.k_prevs:
+                    prevs.append(cur)
                 pa = [cur] + prevs
 
             # crop to common overlap (bottom/right only)
@@ -422,12 +433,14 @@ if __name__ == '__main__':
                 data = ((cur + np.pi) / (2 * np.pi))[None]
             ny, nx, Hc, Wc = cur.shape
 
-        # target mask (unioned over time if requested)
+        # target mask (unioned over time if requested); only real (available) predecessors
+        # contribute here — replicated/padded predecessors are literal copies of cur and
+        # would add nothing.
         mask_cur = np.load(mask_path).astype(np.float32)
-        if args.k_prevs > 0 and not args.replicate_input:
+        if available:
             prev_mask_paths = [
                 os.path.join(mask_dir, f'mask_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
-                for pid in prev_ids
+                for pid in available
             ]
             prev_masks = [np.load(p).astype(np.float32) for p in prev_mask_paths]
             ma = [mask_cur] + prev_masks
@@ -442,10 +455,9 @@ if __name__ == '__main__':
         # --- LiDAR sources list for current+prevs (for AND gating) ---
         cur_lm = ic[8]  # current lidar source from dict
         lidar_sources = [cur_lm]
-        if args.k_prevs > 0 and not args.replicate_input:
-            for pid in prev_ids:
-                pic = get_intf_coords(pid)
-                lidar_sources.append(pic[8])
+        for pid in available:
+            pic = get_intf_coords(pid)
+            lidar_sources.append(pic[8])
 
         # reconstruct & predict
         out = reconstruct_intf_prediction(
