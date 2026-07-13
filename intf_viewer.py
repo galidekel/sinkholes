@@ -437,7 +437,7 @@ async function load(fit) {
 
   if (lidarLayer) { map.removeLayer(lidarLayer); lidarLayer = null; }
   const lm = await (await fetch('/api/lidarmask/' + k)).json();
-  lidarLayer = L.geoJSON(lm, {style: {color:'#ff3d00', weight:5, opacity:1,
+  lidarLayer = L.geoJSON(lm, {style: {color:'#ffff00', weight:5, opacity:1,
                                       dashArray:'10 6', fill:false, lineCap:'butt'}});
   if (document.getElementById('showlidar').checked) lidarLayer.addTo(map);
 }
