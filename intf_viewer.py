@@ -78,6 +78,9 @@ def get_args():
     p.add_argument('--gt_polyg_path', type=str,
                    default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20231001.shp',
                    help='mapped subsidence GT polygons shapefile')
+    p.add_argument('--lidar_mask_path', type=str, default='lidar_mask_polygs.shp',
+                   help='LiDAR valid-coverage polygons shapefile (has a "source" '
+                        'column matching intf_coord.json\'s lidar_mask field, e.g. LiDAR2021)')
     return p.parse_args()
 
 
@@ -165,6 +168,34 @@ def gt_geojson(key):
     g = GT_GDF
     norm = lambda col: g[col].astype(str).str.replace('-', '', regex=False)
     sel = g[(norm('start_date') == sd) & (norm('end_date') == ed)]
+    return sel.to_json() if len(sel) else empty
+
+
+LIDAR_GDF = None
+if ARGS.lidar_mask_path and os.path.exists(ARGS.lidar_mask_path):
+    import geopandas as gpd
+    LIDAR_GDF = _to_lonlat(gpd.read_file(ARGS.lidar_mask_path))
+    logging.info('LiDAR mask polygons: %d features from %s (sources: %s)',
+                 len(LIDAR_GDF), ARGS.lidar_mask_path,
+                 sorted(LIDAR_GDF['source'].dropna().unique()) if 'source' in LIDAR_GDF.columns else 'n/a')
+else:
+    logging.warning('LiDAR mask file not found: %s', ARGS.lidar_mask_path)
+
+
+def lidar_mask_geojson(key):
+    """LiDAR valid-coverage polygon(s) for this intf's source survey, matching
+    the case-insensitive 'source' lookup in test_full_intf.py."""
+    empty = '{"type":"FeatureCollection","features":[]}'
+    if LIDAR_GDF is None or 'source' not in LIDAR_GDF.columns:
+        return empty
+    src = COORD.get(key, {}).get('lidar_mask')
+    if src is None or str(src).strip().lower() in ('', 'none', 'null'):
+        sel = LIDAR_GDF
+    else:
+        col = LIDAR_GDF['source'].astype(str).str.strip().str.lower()
+        sel = LIDAR_GDF[col == str(src).strip().lower()]
+        if sel.empty:
+            sel = LIDAR_GDF
     return sel.to_json() if len(sel) else empty
 
 
@@ -333,6 +364,7 @@ PAGE = """<!DOCTYPE html>
   <span id="npoly" style="color:#fff"></span>
   <label><input type="checkbox" id="showgt"> GT (t)</label>
   <span id="ngt" style="color:#fd0"></span>
+  <label><input type="checkbox" id="showlidar"> LiDAR mask (m)</label>
   <label><input type="checkbox" id="showgrid" checked> grid (g)</label>
   <span id="cursorpos" style="color:#9cf; min-width:150px"></span>
   <button id="boxzoom">box zoom (z)</button>
@@ -345,7 +377,7 @@ PAGE = """<!DOCTYPE html>
 const map = L.map('map', {crs: L.CRS.Simple, minZoom: 6, maxZoom: 19,
                           zoomSnap: 0.25, zoomDelta: 0.5});
 let seqs = null, frame = 'North', idx = 0;
-let overlay = null, polyLayer = null, gtLayer = null, firstLoad = true;
+let overlay = null, polyLayer = null, gtLayer = null, lidarLayer = null, firstLoad = true;
 
 function key() { return seqs[frame][idx]; }
 
@@ -402,6 +434,12 @@ async function load(fit) {
   const ng = gt.features ? gt.features.length : 0;
   document.getElementById('ngt').textContent = ng ? ng + ' GT' : 'no GT';
   if (document.getElementById('showgt').checked) gtLayer.addTo(map);
+
+  if (lidarLayer) { map.removeLayer(lidarLayer); lidarLayer = null; }
+  const lm = await (await fetch('/api/lidarmask/' + k)).json();
+  lidarLayer = L.geoJSON(lm, {style: {color:'#ff9800', weight:2, dashArray:'6 4',
+                                      fill:false}});
+  if (document.getElementById('showlidar').checked) lidarLayer.addTo(map);
 }
 
 function step(d) {
@@ -467,6 +505,10 @@ document.getElementById('showgt').onchange = (e) => {
   if (!gtLayer) return;
   e.target.checked ? gtLayer.addTo(map) : map.removeLayer(gtLayer);
 };
+document.getElementById('showlidar').onchange = (e) => {
+  if (!lidarLayer) return;
+  e.target.checked ? lidarLayer.addTo(map) : map.removeLayer(lidarLayer);
+};
 document.querySelectorAll('input[name=frame]').forEach(r =>
   r.onchange = () => switchFrame(r.value));
 document.addEventListener('keydown', (e) => {
@@ -482,6 +524,10 @@ document.addEventListener('keydown', (e) => {
   }
   else if (e.key === 't' || e.key === 'T') {
     const c = document.getElementById('showgt');
+    c.checked = !c.checked; c.dispatchEvent(new Event('change'));
+  }
+  else if (e.key === 'm' || e.key === 'M') {
+    const c = document.getElementById('showlidar');
     c.checked = !c.checked; c.dispatchEvent(new Event('change'));
   }
   else if (e.key === 'p' || e.key === 'P') {
@@ -562,6 +608,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, polygons_geojson(parts[2]).encode(), 'application/json')
             elif parts[:2] == ['api', 'gt'] and len(parts) == 3:
                 self._send(200, gt_geojson(parts[2]).encode(), 'application/json')
+            elif parts[:2] == ['api', 'lidarmask'] and len(parts) == 3:
+                self._send(200, lidar_mask_geojson(parts[2]).encode(), 'application/json')
             elif parts[:2] == ['api', 'image'] and len(parts) == 3:
                 cmap = parse_qs(url.query).get('cmap', ['gray'])[0]
                 path = render_image(parts[2], cmap)
