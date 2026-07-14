@@ -60,7 +60,11 @@ def get_args():
                    help='directory with the tgeo_int_*.unw files')
     p.add_argument('--intf_dict_path', type=str, default='./intf_coord.json',
                    help='per-interferogram coordinate dictionary')
-    p.add_argument('--polyg_path', type=str, default=None,
+    p.add_argument('--polyg_path', type=str,
+                   default='/home/labs/rudich/Rudich_Collaboration/sinkholes/pred_outputs2/'
+                           'job_train_temporal_2019_2021_negrings04_2026-04-28_17h59checkpoint_epoch55/'
+                           'job_full_2019_2023_hann_07_13_17h07/'
+                           'job_train_temporal_2019_2021_negrings04_2026-04-28_17h59checkpoint_epoch55_2019_2023_combined.shp',
                    help='predicted polygons: a combined shapefile, or a directory '
                         'of per-intf *_predicted_polygs.shp')
     p.add_argument('--days_diff', type=int, default=11,
