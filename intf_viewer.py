@@ -76,9 +76,12 @@ def get_args():
                    help='rendered image format (jpg = smaller/faster, png = lossless)')
     p.add_argument('--clip_pct', nargs=2, type=float, default=[2.0, 98.0],
                    help='percentile clip for display normalization')
-    p.add_argument('--raw_polygs', action='store_true',
-                   help='serve polygon coordinates as-is, without the legacy '
-                        'x4000-origin lon correction')
+    p.add_argument('--legacy_polyg_correction', action='store_true',
+                   help='apply the legacy x4000-origin lon correction; only for '
+                        'shapefiles written before the polygonization coord fix '
+                        '(e.g. 2020_2023_pred_11days.shp). Newer runs such as the '
+                        'hann full-range 2019-2023 combined shp are already '
+                        'correctly georeferenced.')
     p.add_argument('--gt_polyg_path', type=str,
                    default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20231001.shp',
                    help='mapped subsidence GT polygons shapefile')
@@ -237,7 +240,7 @@ def polygons_geojson(key):
             sel = _to_lonlat(gpd.read_file(hits[0]))
     if sel is None or not len(sel):
         return empty
-    if not ARGS.raw_polygs:
+    if ARGS.legacy_polyg_correction:
         sel = sel.copy()
         sel.geometry = sel.geometry.translate(xoff=polyg_lon_correction(key))
     return sel.to_json()
