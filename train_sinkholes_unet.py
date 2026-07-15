@@ -207,7 +207,7 @@ def train_model(
         else:
             test_list = None
 
-        # test_list = ['20190504_20190515','20191210_20191221','20200613_20200624','20201115_20201126','20210326_20210406','20210510_20210521']
+         # test_list = ['20190504_20190515','20191210_20191221','20200613_20200624','20201115_20201126','20210326_20210406','20210510_20210521']#hack
         if test_list is None:
             random.shuffle(unique_intf_list)
             n_val = int(len(unique_intf_list)*(val_percent))
@@ -233,7 +233,7 @@ def train_model(
 
             train_list = tv_list[:n_train]
             val_list = tv_list[n_train:]
-        if args.preset_test_val_21:
+        if args.preset_test_val_21:#hack
             val_list = ['20210407_20210418','20210418_20210429','20210304_20210315','20210326_20210406']
             test_list = ['20210806_20210817','20210623_20210704','20210622_20210703','20210714_20210725']
 
@@ -248,10 +248,10 @@ def train_model(
             logging.info(f' test interferograms: {test_list}')
             logging.info(f'val interferograms: {val_list}')
             logging.info(f'train interferograms: {train_list}')
-        if is_running_locally and True:
-            train_list = ['20191129_20191210']
-            test_list = ['20191129_20191210']
-            val_list = ['20191129_20191210']
+        if is_running_locally and True: #hack for local debug
+            train_list = ['20190204_20190215']
+            test_list = ['20190205_20190216']
+            val_list = ['20190216_20190227']
 
 
 
