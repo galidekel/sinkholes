@@ -6,7 +6,9 @@ trained on interferogram patches with manually mapped subsidence polygons as gro
 ## Pipeline Overview
 
 ```
-interferograms + mapped subsidence polygons
+interferograms + mapped subsidence polygons : (full interferograms: /home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/
+                                              data patches: /home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/data_patches...
+                                         GT mask patches: /home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/mask_patches...)
         │
         ▼
 1. Patch preparation      prepare_intrfrgrm_pathches.py
