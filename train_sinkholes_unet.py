@@ -32,7 +32,7 @@ import pickle
 from attn_unet import *
 import torch.nn.functional as F
 
-EPS = 1e-6
+EPS = 1e-1
 
 def masked_bce_with_logits(logits, y_float, V, pos_w: float = 1.0):
     """

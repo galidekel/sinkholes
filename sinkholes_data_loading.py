@@ -260,7 +260,11 @@ class SubsiDataset(Dataset):
                     image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
 
                     masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # each (N,H,W)
-                    mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
+                    if getattr(args, 'k_unified_mask', False):
+                        mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
+                    else:
+                        # tids = prevs... + [id], so the current interferogram is always last
+                        mask_data = (masks_per_t[-1] > 0).astype(np.float32)  # (N,H,W)
 
                     # (optional) your no-data treatment stays unchanged
                     if args.treat_nodata_regions:
@@ -474,7 +478,11 @@ class SubsiDataset(Dataset):
                     image_data = np.stack(patches_per_t, axis=0).astype(np.float32)  # (T,N,H,W)
 
                     masks_per_t = [np.stack([p[x, y] for (x, y) in rc_use], axis=0) for p in msk_pa]  # each (N,H,W)
-                    mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
+                    if getattr(args, 'k_unified_mask', False):
+                        mask_data = (np.stack(masks_per_t, axis=0) > 0).any(axis=0).astype(np.float32)  # (N,H,W)
+                    else:
+                        # tids = prevs... + [id], so the current interferogram is always last
+                        mask_data = (masks_per_t[-1] > 0).astype(np.float32)  # (N,H,W)
 
                 elif args.nonz_only:
                     mask_nz, image_nz = [], []
