@@ -487,6 +487,10 @@ def get_args():
     parser.add_argument('--add_temporal', action='store_true')
     parser.add_argument('--k_prevs',type=int, default=2)
     parser.add_argument('--treat_nodata_regions', action='store_true')
+    parser.add_argument('--add_temporal_validity', type=str, default='True',
+                        help='append a real-vs-repeat-padded validity channel per temporal slot')
+    parser.add_argument('--k_unified_mask', action='store_true',
+                        help='label mask is the union across all k_prevs+1 timesteps instead of current-only')
 
     parser.add_argument('--pos_w', type=float, default=1)
     parser.add_argument('--lidar_gate', action='store_true')
@@ -533,6 +537,7 @@ if __name__ == '__main__':
     args.save_val = str2bool(args.save_val)
     args.nonoverlap_tr_tst = str2bool(args.nonoverlap_tr_tst)
     args.retrain_with_fpz = str2bool(args.retrain_with_fpz)
+    args.add_temporal_validity = str2bool(args.add_temporal_validity)
 
     dir_checkpoint = Path(outpath + 'checkpoints/')
     dir_validation = Path(outpath + 'validation/')
@@ -547,6 +552,12 @@ if __name__ == '__main__':
         num_c=1
     if args.treat_nodata_regions:
         num_c = num_c*2
+    if args.add_temporal_validity:
+        # one extra plane per PREVIOUS timestep only (k_prevs, not k_prevs+1) -- the current
+        # timestep is always real so it needs no validity flag. Not a doubling of whatever
+        # num_c already is -- treat_nodata_regions and add_temporal_validity are independent
+        # blocks, so they add rather than compound
+        num_c = num_c + args.k_prevs
 
 
     if args.attn_unet:

@@ -216,7 +216,6 @@ import json
 intf_dict_file = open('intf_coord.json', 'r')
 intf_coords = json.load(intf_dict_file)
 new_grid = build_common_grid_for_region(intf_coords,'North')
-print(new_grid)
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -239,13 +238,19 @@ def find_11day_sequences(
          ...
       }
 
-      valid_currents = [current_key, ...]     # only those with full K-previous chains
+      valid_currents = [current_key, ...]     # every current passing the frame/duration/nonz
+                                               # checks below, regardless of how much real
+                                               # prev history it has (possibly none)
 
     Rules:
       - Only consider interferograms with duration == step_days (default 11).
       - 'frame' is taken from meta[k]['frame'] and must be 'North' or 'South'.
-      - Previous frames are required exactly i*step_days earlier (i=1..K),
-        and must belong to the SAME frame as current.
+      - Previous frames are looked for exactly i*step_days earlier (i=1..K), same frame as
+        current, walking backward from the closest (i=1) to the farthest (i=K). The first
+        missing/invalid one truncates the chain there -- it does NOT disqualify the current
+        interferogram, so 'prevs' can be shorter than k_prev (down to empty). Downstream
+        (SubsiDataset) repeat-pads short chains and flags the padded slots via a validity
+        channel.
       - If require_current_nonz_gt0=True, current must have nonz_num > 0.
       - If restrict_to is provided, only those current keys are attempted.
     """
@@ -300,22 +305,19 @@ def find_11day_sequences(
             if nonz <= 0:
                 continue
 
-        # Build previous list within SAME frame group
+        # Build previous list within SAME frame group, closest -> farthest, stopping at the
+        # first gap: a missing prev truncates how far back real history goes for this current,
+        # it no longer disqualifies the current interferogram itself
         group = frame_groups[frm]
-        prevs: List[str] = []
-        ok = True
-        # build in oldest->newest order
-        for i in range(k_prev, 0, -1):
+        prevs_rev: List[str] = []   # closest -> farthest; reversed below to oldest->newest
+        for i in range(1, k_prev + 1):
             psd = sd - timedelta(days=i * step_days)
             ped = ed - timedelta(days=i * step_days)
             pk = make_key(psd, ped)
             if (pk not in group) or (daydiff.get(pk) != step_days):
-                ok = False
                 break
-            prevs.append(pk)
-
-        if not ok:
-            continue
+            prevs_rev.append(pk)
+        prevs = list(reversed(prevs_rev))  # oldest -> newest; possibly shorter than k_prev
 
         chains_map[cur_key] = {"prevs": prevs, "frame": frm}
         valid_intfs.append(cur_key)

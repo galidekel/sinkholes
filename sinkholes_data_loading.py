@@ -173,7 +173,15 @@ class SubsiDataset(Dataset):
 
             if self.temporal:
 
-                tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present (T = k_prev+1)
+                tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present, oldest -> current
+                # not enough real history (early in the record): repeat-pad the front with the
+                # earliest available tid (id itself if prevs is completely empty) so every sample
+                # has a fixed T = k_prevs+1, and flag the padded slots as invalid via valid_t
+                T_target = args.k_prevs + 1
+                n_missing = T_target - len(tids)
+                valid_t = [0] * n_missing + [1] * len(tids)
+                if n_missing > 0:
+                    tids = [tids[0]] * n_missing + tids
 
             if args.partition_mode != 'spatial':
 
@@ -274,6 +282,14 @@ class SubsiDataset(Dataset):
                             V = V & (~np.isnan(image_data))
                             image_data = np.nan_to_num(image_data, nan=0.0)
                         image_data = np.concatenate([image_data, V], axis=0).astype(np.float32)  # -> (2T,N,H,W)
+
+                    # one constant plane per PREVIOUS timestep (k_prevs of them; the current
+                    # timestep is always real so it needs no validity flag) marking real (1) vs
+                    # repeat-padded (0) history, so the model can learn to discount padded slots
+                    if getattr(args, 'add_temporal_validity', False):
+                        N = image_data.shape[1]
+                        V_temporal = np.stack([np.full((N, H, W), v, dtype=np.float32) for v in valid_t[:-1]], axis=0)
+                        image_data = np.concatenate([image_data, V_temporal], axis=0).astype(np.float32)
 
                 elif args.nonoverlap_tr_tst:
                     if dset == 'train':
@@ -483,6 +499,14 @@ class SubsiDataset(Dataset):
                     else:
                         # tids = prevs... + [id], so the current interferogram is always last
                         mask_data = (masks_per_t[-1] > 0).astype(np.float32)  # (N,H,W)
+
+                    # one constant plane per PREVIOUS timestep (k_prevs of them; the current
+                    # timestep is always real so it needs no validity flag) marking real (1) vs
+                    # repeat-padded (0) history, so the model can learn to discount padded slots
+                    if getattr(args, 'add_temporal_validity', False):
+                        N = image_data.shape[1]
+                        V_temporal = np.stack([np.full((N, H, W), v, dtype=np.float32) for v in valid_t[:-1]], axis=0)
+                        image_data = np.concatenate([image_data, V_temporal], axis=0).astype(np.float32)
 
                 elif args.nonz_only:
                     mask_nz, image_nz = [], []
