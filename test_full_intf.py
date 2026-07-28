@@ -29,7 +29,7 @@ from rasterio.features import rasterize
 
 
 def reconstruct_intf_prediction(
-    data,                   # (C, ny, nx, H, W) or (ny, nx, H, W) ; channel 0 = current
+    data,                   # (C, ny, nx, H, W) or (ny, nx, H, W) ; last channel = current
     intf_coords,            # tuple from get_intf_coords / your tuple logic
     net,                    # torch model
     patch_size,             # (patch_H, patch_W)
@@ -46,13 +46,20 @@ def reconstruct_intf_prediction(
     blend=None,             # None | 'hann'
     pred_blend_dtype='float32',
     window_gamma = 1.0,
-    blend_space = 'prob'
+    blend_space = 'prob',
+    temporal_validity=None,  # (k_prevs, H, W) or None -- one constant real(1)/padded(0) plane
+                              # per PREVIOUS timestep, appended to every patch's channels
+                              # AFTER any nodata-V doubling, matching
+                              # train_sinkholes_unet.py's num_c = T*(1+nodata) + k_prevs*validity
 ):
     """
     Returns (if mask is not None):
       reconstructed_intf_all, reconstructed_mask, reconstructed_pred_th, reconstructed_pred, reconstructed_prevs
     Else:
       reconstructed_intf, reconstructed_pred, reconstructed_prevs
+
+    data: channel order is oldest_prev -> ... -> newest_prev -> current (current LAST),
+    matching seq_dict['prevs'] + [id] in sinkholes_data_loading.py.
     """
     # unpack coords (keep your ordering)
     x0, y0, dx, dy, ncells, nlines, x4000, x8500, current_lidar_mask, num_nonz_p, bo, frame = intf_coords
@@ -171,6 +178,9 @@ def reconstruct_intf_prediction(
                 v_np = (np.abs(x_np - 0.5) > tol).astype(np.float32)  # (C, H, W), 1=valid, 0=no-data
                 x_np = np.concatenate([x_np, v_np], axis=0)  # (2C, H, W)
 
+            if temporal_validity is not None:
+                x_np = np.concatenate([x_np, temporal_validity], axis=0)  # (+k_prevs, H, W)
+
             image = torch.from_numpy(x_np[None]).to(device=device, memory_format=torch.channels_last)
             with torch.no_grad():
                 logits = net(image)
@@ -264,6 +274,9 @@ def get_pred_args():
     p.add_argument('--unioned_mask', action='store_true')
     p.add_argument('--k_prevs', type=int, default=0)
     p.add_argument('--treat_nodata_regions', action='store_true')
+    p.add_argument('--add_temporal_validity', type=str, default='True',
+                   help="append a real-vs-repeat-padded validity channel per previous timestep "
+                        "-- must match the checkpoint's training config (n_channels)")
     p.add_argument('--blend_type', type=str, default=None,choices=['hann','center-crop'])
     p.add_argument('--window_gamma', type=float,default=1.0)
     p.add_argument('--year_range', nargs=2, type=int, default=[2019, 2023],
@@ -289,6 +302,7 @@ if __name__ == '__main__':
     now = datetime.now().strftime("%m_%d_%Hh%M")
     args = get_pred_args()
     args.add_lidar_mask = str2bool(args.add_lidar_mask)
+    args.add_temporal_validity = str2bool(args.add_temporal_validity)
     if not is_running_locally:
         args.plot = False
 
@@ -328,6 +342,11 @@ if __name__ == '__main__':
 
     if args.treat_nodata_regions:
         num_c = num_c*2
+    if args.add_temporal_validity:
+        # one extra plane per PREVIOUS timestep only (k_prevs, not k_prevs+1) -- the current
+        # timestep is always real. Additive, not another doubling -- matches
+        # train_sinkholes_unet.py's num_c = T*(1+treat_nodata_regions) + k_prevs*add_temporal_validity
+        num_c = num_c + args.k_prevs
     # model
     net = UNet(n_channels=num_c, n_classes=1, bilinear=False)
     if args.attn_unet:
@@ -391,13 +410,20 @@ if __name__ == '__main__':
         # load current
         cur = np.load(data_path).astype(np.float32)  # [ny, nx, H, W]
 
-        # build channel stack (current + prevs), normalize per-channel only if not 0..1
-        available = []  # predecessors we actually have real data for (used below for mask/lidar)
+        # build channel stack: prevs oldest -> newest, then current LAST -- matching
+        # seq_dict['prevs'] + [id] order in sinkholes_data_loading.py. normalize per-channel
+        # only if not 0..1
+        available = []  # real (non-padded) predecessors we actually loaded (used below for mask)
+        slot_ids = []    # intf id whose data/LiDAR-source actually occupies each prev slot
+                         # (oldest -> newest; a padded slot points at whatever id it copied)
+        temporal_validity_block = None
         if args.k_prevs > 0:
             if args.replicate_input or (args.fallback_replicate and intf not in prev_dict):
-                pa = [cur] * (args.k_prevs + 1)
+                pa = [cur] * args.k_prevs + [cur]
+                valid_t = [0] * args.k_prevs + [1]
+                slot_ids = [intf] * args.k_prevs
             else:
-                prev_ids = prev_dict[intf]['prevs'][:args.k_prevs][::-1]  # newest-first
+                prev_ids = prev_dict[intf]['prevs'][:args.k_prevs]  # oldest -> newest (seq_dict order)
                 available = [pid for pid in prev_ids
                              if os.path.exists(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'))]
                 prevs = [
@@ -405,10 +431,19 @@ if __name__ == '__main__':
                            ).astype(np.float32)
                     for pid in available
                 ]
-                # pad any predecessors missing on disk with the current intf
-                while len(prevs) < args.k_prevs:
-                    prevs.append(cur)
-                pa = [cur] + prevs
+                # front-pad any missing predecessors with the earliest available real one
+                # (or with cur itself if none are available at all) -- matches the repeat-pad
+                # semantics in sinkholes_data_loading.py, NOT always cur
+                n_missing = args.k_prevs - len(prevs)
+                if n_missing > 0:
+                    pad_with = prevs[0] if prevs else cur
+                    pad_id = available[0] if available else intf
+                    prevs = [pad_with] * n_missing + prevs
+                    slot_ids = [pad_id] * n_missing + available
+                else:
+                    slot_ids = list(available)
+                valid_t = [0] * n_missing + [1] * len(available) + [1]  # padded, real, current
+                pa = prevs + [cur]  # oldest -> newest -> current
 
             # crop to common overlap (bottom/right only)
             ny = min(p.shape[0] for p in pa)
@@ -427,6 +462,14 @@ if __name__ == '__main__':
                 else:
                     normed.append((pc + np.pi) / (2 * np.pi))
             data = np.stack(normed, axis=0).astype(np.float32)  # (C, ny, nx, H, W)
+
+            # one constant (H, W) plane per PREVIOUS slot (current excluded, always real);
+            # reused for every patch since a given predecessor is uniformly real/padded for
+            # the whole image, not patch-dependent
+            if args.add_temporal_validity:
+                temporal_validity_block = np.stack(
+                    [np.full((Hc, Wc), v, dtype=np.float32) for v in valid_t[:-1]], axis=0
+                )  # (k_prevs, H, W)
 
         else:
             mn, mx = float(np.nanmin(cur)), float(np.nanmax(cur))
@@ -458,17 +501,19 @@ if __name__ == '__main__':
 
         logging.info(f"{mask_fn} shape used: {mask.shape}")
 
-        # --- LiDAR sources list for current+prevs (for AND gating) ---
+        # --- LiDAR sources list for prevs+current (for AND gating) ---
+        # order and length must match data's channel order: oldest -> newest -> current.
+        # A padded slot's source follows whatever id its data was copied from (slot_ids),
+        # not the current intf's -- otherwise a padded early-history slot would gate on the
+        # wrong LiDAR survey.
         cur_lm = ic[8]  # current lidar source from dict
-        lidar_sources = [cur_lm]
-        for pid in available:
-            pic = get_intf_coords(pid)
-            lidar_sources.append(pic[8])
+        lidar_sources = [get_intf_coords(sid)[8] if sid != intf else cur_lm for sid in slot_ids] + [cur_lm]
 
         # reconstruct & predict
         out = reconstruct_intf_prediction(
             data, intfs_coords, net, (patch_H, patch_W),
             args.data_stride, args.recon_th, mask,
+            temporal_validity=temporal_validity_block,
             add_lidar_mask=args.add_lidar_mask,
             plot=False,
             lidar_sources=lidar_sources,
