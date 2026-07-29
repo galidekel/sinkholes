@@ -232,7 +232,10 @@ def find_11day_sequences(
 
       chains_map = {
          current_key: {
-            "prevs": [prev_K, ..., prev_1],   # oldest -> most recent
+            "prevs": [slot_K, ..., slot_1],   # oldest -> most recent, ALWAYS exactly k_prev
+                                               # entries; a slot is None where that specific
+                                               # offset (i*step_days before current) has no
+                                               # matching interferogram
             "frame": "North" or "South"
          },
          ...
@@ -245,12 +248,13 @@ def find_11day_sequences(
     Rules:
       - Only consider interferograms with duration == step_days (default 11).
       - 'frame' is taken from meta[k]['frame'] and must be 'North' or 'South'.
-      - Previous frames are looked for exactly i*step_days earlier (i=1..K), same frame as
-        current, walking backward from the closest (i=1) to the farthest (i=K). The first
-        missing/invalid one truncates the chain there -- it does NOT disqualify the current
-        interferogram, so 'prevs' can be shorter than k_prev (down to empty). Downstream
-        (SubsiDataset) repeat-pads short chains and flags the padded slots via a validity
-        channel.
+      - Each of the k_prev previous slots (i*step_days before current, i=1..K, same frame) is
+        checked INDEPENDENTLY -- a missing slot does NOT block farther-back slots from being
+        found (unlike a simple backward walk that stops at the first gap, which would silently
+        discard real farther-back data whenever something closer is missing). 'prevs' is
+        therefore always exactly k_prev entries long; missing slots are None wherever they
+        occur, not just at the tail. Downstream (SubsiDataset / test_full_intf.py) substitutes
+        a real neighboring value for None slots and flags them via a validity channel.
       - If require_current_nonz_gt0=True, current must have nonz_num > 0.
       - If restrict_to is provided, only those current keys are attempted.
     """
@@ -305,19 +309,19 @@ def find_11day_sequences(
             if nonz <= 0:
                 continue
 
-        # Build previous list within SAME frame group, closest -> farthest, stopping at the
-        # first gap: a missing prev truncates how far back real history goes for this current,
-        # it no longer disqualifies the current interferogram itself
+        # Build previous slots within SAME frame group -- each offset i=1..k_prev is checked
+        # independently, so a gap at i=1 (closest) does not hide real data that exists at
+        # i=2, i=3, etc. (farther back). Result is always exactly k_prev entries, oldest ->
+        # newest, with None at any missing offset regardless of position.
         group = frame_groups[frm]
-        prevs_rev: List[str] = []   # closest -> farthest; reversed below to oldest->newest
+        by_offset: Dict[int, str] = {}
         for i in range(1, k_prev + 1):
             psd = sd - timedelta(days=i * step_days)
             ped = ed - timedelta(days=i * step_days)
             pk = make_key(psd, ped)
-            if (pk not in group) or (daydiff.get(pk) != step_days):
-                break
-            prevs_rev.append(pk)
-        prevs = list(reversed(prevs_rev))  # oldest -> newest; possibly shorter than k_prev
+            if pk in group and daydiff.get(pk) == step_days:
+                by_offset[i] = pk
+        prevs = [by_offset.get(i) for i in range(k_prev, 0, -1)]  # oldest -> newest
 
         chains_map[cur_key] = {"prevs": prevs, "frame": frm}
         valid_intfs.append(cur_key)

@@ -413,9 +413,9 @@ if __name__ == '__main__':
         # build channel stack: prevs oldest -> newest, then current LAST -- matching
         # seq_dict['prevs'] + [id] order in sinkholes_data_loading.py. normalize per-channel
         # only if not 0..1
-        available = []  # real (non-padded) predecessors we actually loaded (used below for mask)
+        available = []  # real (non-substituted) predecessors we actually loaded (used below for mask)
         slot_ids = []    # intf id whose data/LiDAR-source actually occupies each prev slot
-                         # (oldest -> newest; a padded slot points at whatever id it copied)
+                         # (oldest -> newest; a substituted slot points at whatever id it copied)
         temporal_validity_block = None
         if args.k_prevs > 0:
             if args.replicate_input or (args.fallback_replicate and intf not in prev_dict):
@@ -423,26 +423,28 @@ if __name__ == '__main__':
                 valid_t = [0] * args.k_prevs + [1]
                 slot_ids = [intf] * args.k_prevs
             else:
-                prev_ids = prev_dict[intf]['prevs'][:args.k_prevs]  # oldest -> newest (seq_dict order)
-                available = [pid for pid in prev_ids
-                             if os.path.exists(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy'))]
-                prevs = [
-                    np.load(os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
-                           ).astype(np.float32)
-                    for pid in available
-                ]
-                # front-pad any missing predecessors with the earliest available real one
-                # (or with cur itself if none are available at all) -- matches the repeat-pad
-                # semantics in sinkholes_data_loading.py, NOT always cur
-                n_missing = args.k_prevs - len(prevs)
-                if n_missing > 0:
-                    pad_with = prevs[0] if prevs else cur
-                    pad_id = available[0] if available else intf
-                    prevs = [pad_with] * n_missing + prevs
-                    slot_ids = [pad_id] * n_missing + available
-                else:
-                    slot_ids = list(available)
-                valid_t = [0] * n_missing + [1] * len(available) + [1]  # padded, real, current
+                # raw_prev_ids: exactly k_prevs slots, oldest -> newest, None wherever
+                # find_11day_sequences found no matching interferogram for that specific
+                # offset (checked independently per slot -- gaps can be anywhere, not just
+                # at the start of the record). A slot present in metadata but missing its
+                # patch file on disk (not yet prepared) is treated the same as None.
+                raw_prev_ids = prev_dict[intf]['prevs'][:args.k_prevs]
+
+                def _patch_path(pid):
+                    return os.path.join(data_dir, f'data_patches_{pid}_H{patch_H}_W{patch_W}_strpp{args.data_stride}.npy')
+
+                usable = [pid if (pid is not None and os.path.exists(_patch_path(pid))) else None
+                          for pid in raw_prev_ids]
+                available = [pid for pid in usable if pid is not None]  # oldest -> newest, real only
+
+                loaded = {pid: np.load(_patch_path(pid)).astype(np.float32) for pid in available}
+                fallback_pid = available[0] if available else None
+                fallback_arr = loaded[fallback_pid] if fallback_pid is not None else cur
+
+                prevs = [(loaded[pid] if pid is not None else fallback_arr) for pid in usable]
+                slot_ids = [(pid if pid is not None else (fallback_pid if fallback_pid is not None else intf))
+                            for pid in usable]
+                valid_t = [(1 if pid is not None else 0) for pid in usable] + [1]
                 pa = prevs + [cur]  # oldest -> newest -> current
 
             # crop to common overlap (bottom/right only)

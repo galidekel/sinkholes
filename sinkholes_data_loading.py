@@ -134,6 +134,11 @@ class SubsiDataset(Dataset):
                 self.seq_dict = seq_dict
         else:
             self.temporal = False
+        # number of actual interferogram/phase channels (T), i.e. everything BEFORE any
+        # treat_nodata_regions/add_temporal_validity flag channels get concatenated on. Used by
+        # preprocess() to scope its exact-zero -> 0.5 phase remap to just these -- that remap is
+        # meaningless (and corrupting) for the binary 0/1 flag channels appended after them.
+        self.n_base_channels = (args.k_prevs + 1) if self.temporal else 1
         if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train and not args.nonoverlap_tr_tst and not self.temporal:
             pref, mask_pref = 'data_patches_nonz_', 'mask_patches_nonz_'
         else:
@@ -173,15 +178,16 @@ class SubsiDataset(Dataset):
 
             if self.temporal:
 
-                tids = list(self.seq_dict[id]["prevs"]) + [id]  # prevs…present, oldest -> current
-                # not enough real history (early in the record): repeat-pad the front with the
-                # earliest available tid (id itself if prevs is completely empty) so every sample
-                # has a fixed T = k_prevs+1, and flag the padded slots as invalid via valid_t
-                T_target = args.k_prevs + 1
-                n_missing = T_target - len(tids)
-                valid_t = [0] * n_missing + [1] * len(tids)
-                if n_missing > 0:
-                    tids = [tids[0]] * n_missing + tids
+                # raw_prevs: exactly k_prevs slots, oldest -> newest, None wherever that
+                # specific offset has no real interferogram (gaps can occur anywhere, not just
+                # at the start of the record -- see find_11day_sequences). Substitute the
+                # earliest available REAL slot for every None (or id itself if none of the
+                # k_prevs slots are real) and flag the substituted slots via valid_t.
+                raw_prevs = list(self.seq_dict[id]["prevs"])
+                real_prevs = [t for t in raw_prevs if t is not None]
+                fallback = real_prevs[0] if real_prevs else id
+                tids = [(t if t is not None else fallback) for t in raw_prevs] + [id]
+                valid_t = [(1 if t is not None else 0) for t in raw_prevs] + [1]
 
             if args.partition_mode != 'spatial':
 
@@ -556,7 +562,7 @@ class SubsiDataset(Dataset):
         return len(self.index_map)
 
     @staticmethod
-    def preprocess(mask_values, img, is_mask):
+    def preprocess(mask_values, img, is_mask, n_base_channels=None):
 
         if is_mask:
             mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.int64)
@@ -570,7 +576,12 @@ class SubsiDataset(Dataset):
 
         out = img.copy()
         tol = 1e-1
-        for c in range(out.shape[0]):
+        # only the first n_base_channels (the actual phase/interferogram channels) get the
+        # exact-zero -> 0.5 remap; channels beyond that are binary flag channels (nodata-V /
+        # temporal-validity) and must stay literal 0/1 -- a fully-invalid flag channel is
+        # uniformly 0, which this remap would otherwise blanket-turn into 0.5
+        n_phase = out.shape[0] if n_base_channels is None else min(n_base_channels, out.shape[0])
+        for c in range(n_phase):
             mn = float(np.nanmin(out[c]));
             mx = float(np.nanmax(out[c]))
             if (mn < -tol) or (mx > 1.0 + tol):
@@ -601,7 +612,7 @@ class SubsiDataset(Dataset):
             msk = self.mask_data[intf_idx][0, patch_idx].astype(np.float32)
 
         # Preprocess
-        img = self.preprocess(self.mask_values, img, 0)  # keeps shape; (T,H,W) or (H,W)
+        img = self.preprocess(self.mask_values, img, 0, n_base_channels=self.n_base_channels)  # keeps shape; (T,H,W) or (H,W)
         msk = self.preprocess(self.mask_values, msk, 1)  # -> (H,W) labels
         # if self.dataset != 'train':
         #     T = img.shape[0];
