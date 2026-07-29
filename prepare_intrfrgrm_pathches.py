@@ -88,7 +88,7 @@ def get_args():
     parser.add_argument('--by_list',  type=str, default=None, help='From an input list')
     parser.add_argument('--input_dir',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/', help='full unw files directory for input')
     parser.add_argument('--output_dir',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='patches output')
-    parser.add_argument('--gt_polygon_file_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_sub_20260701.shp', help='')
+    parser.add_argument('--gt_polygon_file_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20260701.shp', help='')
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--strides_per_patch',type=int, default=2, help='strides per patch - 2 means half a window stride, 4 means quarter a window stride etc')
