@@ -10,7 +10,11 @@ def get_intf_coords(intf_name):
     nlines = intf_coords[intf_name]['nlines']
     ncells = intf_coords[intf_name]['ncells']
     lidar_mask = intf_coords[intf_name]['lidar_mask']
-    num_nonz_p = intf_coords[intf_name]['nonz_num']
+    # 'nonz_num' is computed by check_patches.py AFTER patches exist (it scans the patch files
+    # this dict entry is used to produce) -- requiring it here would make patchify depend on its
+    # own output. It isn't otherwise used in this tuple's consumers, so default it like
+    # check_patches.py does for any entry it hasn't reached yet.
+    num_nonz_p = intf_coords[intf_name].get('nonz_num', 'none')
     bo = intf_coords[intf_name]['byte_order']
     frame = intf_coords[intf_name]['frame']
 
