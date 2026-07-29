@@ -88,7 +88,7 @@ def get_args():
     parser.add_argument('--by_list',  type=str, default=None, help='From an input list')
     parser.add_argument('--input_dir',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/', help='full unw files directory for input')
     parser.add_argument('--output_dir',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/patches/', help='patches output')
-    parser.add_argument('--gt_polygon_file_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20231001.shp', help='')
+    parser.add_argument('--gt_polygon_file_path',  type=str, default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_sub_20260701.shp', help='')
     parser.add_argument('--plot_data',  type=bool, default=False)
     parser.add_argument('--patch_size',  nargs = '+', type = int, default=[200,100], help='patch H, patch W')
     parser.add_argument('--strides_per_patch',type=int, default=2, help='strides per patch - 2 means half a window stride, 4 means quarter a window stride etc')
@@ -277,15 +277,25 @@ if __name__ == '__main__':
                 else:
                     plt.close()
 
-    # Write non-zero indices JSON (pretty-chunked lines)
+    # Write non-zero indices JSON (pretty-chunked lines). Merge with any existing file instead
+    # of overwriting it -- this script is commonly re-run to add a new batch of interferograms
+    # (e.g. a new year range) into an already-populated patch dir, and previously this clobbered
+    # nonz_indices.json down to just the current run's intfs, silently dropping every earlier
+    # entry (which breaks SubsiDataset's positive-site selection for all of them).
     items_per_line = 50
     out_path = os.path.join(data_output_dir, "nonz_indices.json")
 
+    merged = {}
+    if os.path.exists(out_path):
+        with open(out_path, "r", encoding="utf-8") as f:
+            merged = json.load(f)
+    merged.update(nonzero_mask_inds_by_intf)
+
     with open(out_path, "w", encoding="utf-8") as f:
         f.write("{\n")
-        keys = list(nonzero_mask_inds_by_intf.keys())
+        keys = list(merged.keys())
         for ki, intf_id in enumerate(keys):
-            pairs = nonzero_mask_inds_by_intf[intf_id]
+            pairs = merged[intf_id]
             pairs = [(int(i), int(j)) for (i, j) in pairs]
             f.write(f'  "{intf_id}": [\n')
             n = len(pairs)
