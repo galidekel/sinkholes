@@ -135,6 +135,20 @@ for fn in os.listdir(ARGS.input_dir):
         UNW_BY_KEY[f'{m.group(1)}_{m.group(2)}'] = fn
 logging.info('found %d .unw files in %s', len(UNW_BY_KEY), ARGS.input_dir)
 
+# map intf key -> pre-rendered .unw.jpg filename, when one exists alongside
+# the .unw (not all intfs have one). Used as a fast path for the default
+# 'jet' colormap only, since we don't know the clip/colormap the source jpg
+# was rendered with; other colormaps still go through the .unw pipeline.
+JPG_BY_KEY = {}
+for fn in os.listdir(ARGS.input_dir):
+    if not fn.endswith('.unw.jpg'):
+        continue
+    m = re.match(r'tgeo_int_(\d{8})T\d+_(\d{8})T\d+\.unw\.jpg$', fn)
+    if m:
+        JPG_BY_KEY[f'{m.group(1)}_{m.group(2)}'] = fn
+logging.info('found %d pre-rendered .unw.jpg files in %s (fast path for jet)',
+             len(JPG_BY_KEY), ARGS.input_dir)
+
 # ----------------------------------------------------------------- polygons
 POLYG_GDF = None       # combined-shapefile mode
 POLYG_DIR = None       # per-intf-directory mode
@@ -274,6 +288,25 @@ def render_image(key, cmap_name):
     try:
         if os.path.exists(out):
             return out
+
+        # fast path: a pre-rendered jpg avoids the .unw read + percentile
+        # clip + colorize (the expensive part, ~8s for a full-size scene).
+        # Only used for 'jet' since that's the source jpgs' assumed colormap;
+        # other colormaps need the actual .unw data.
+        jpg_fn = JPG_BY_KEY.get(key)
+        if cmap_name == 'jet' and jpg_fn is not None:
+            src = Image.open(os.path.join(ARGS.input_dir, jpg_fn))
+            if src.mode != 'RGB':
+                src = src.convert('RGB')
+            tmp = out + '.tmp'
+            if ARGS.fmt == 'jpg':
+                src.save(tmp, format='JPEG', quality=87)
+            else:
+                src.save(tmp, format='PNG')
+            os.replace(tmp, out)
+            logging.info('used source jpg for %s (%s)', key, cmap_name)
+            return out
+
         info = COORD[key]
         fn = UNW_BY_KEY.get(key)
         if fn is None:
