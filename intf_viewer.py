@@ -83,7 +83,7 @@ def get_args():
                         'hann full-range 2019-2023 combined shp are already '
                         'correctly georeferenced.')
     p.add_argument('--gt_polyg_path', type=str,
-                   default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20231001.shp',
+                   default='/home/labs/rudich/Rudich_Collaboration/deadsea_sinkholes_data/sub_20260701.shp',
                    help='mapped subsidence GT polygons shapefile')
     p.add_argument('--lidar_mask_path', type=str, default='lidar_mask_polygs.shp',
                    help='LiDAR valid-coverage polygons shapefile (has a "source" '
