@@ -139,6 +139,11 @@ class SubsiDataset(Dataset):
         # preprocess() to scope its exact-zero -> 0.5 phase remap to just these -- that remap is
         # meaningless (and corrupting) for the binary 0/1 flag channels appended after them.
         self.n_base_channels = (args.k_prevs + 1) if self.temporal else 1
+        # temporal-validity flags are constant per (id, prev-slot) -- not per patch -- so they're
+        # kept as tiny per-id scalars here and only broadcast to full (H,W) planes in __getitem__,
+        # instead of being materialized as (N,H,W) arrays for every patch at load time.
+        self.add_temporal_validity = bool(getattr(args, 'add_temporal_validity', False)) if self.temporal else False
+        self.valid_t = []
         if args.nonz_only and args.partition_mode != 'spatial' and not args.add_nulls_to_train and not args.nonoverlap_tr_tst and not self.temporal:
             pref, mask_pref = 'data_patches_nonz_', 'mask_patches_nonz_'
         else:
@@ -288,14 +293,6 @@ class SubsiDataset(Dataset):
                             V = V & (~np.isnan(image_data))
                             image_data = np.nan_to_num(image_data, nan=0.0)
                         image_data = np.concatenate([image_data, V], axis=0).astype(np.float32)  # -> (2T,N,H,W)
-
-                    # one constant plane per PREVIOUS timestep (k_prevs of them; the current
-                    # timestep is always real so it needs no validity flag) marking real (1) vs
-                    # repeat-padded (0) history, so the model can learn to discount padded slots
-                    if getattr(args, 'add_temporal_validity', False):
-                        N = image_data.shape[1]
-                        V_temporal = np.stack([np.full((N, H, W), v, dtype=np.float32) for v in valid_t[:-1]], axis=0)
-                        image_data = np.concatenate([image_data, V_temporal], axis=0).astype(np.float32)
 
                 elif args.nonoverlap_tr_tst:
                     if dset == 'train':
@@ -506,14 +503,6 @@ class SubsiDataset(Dataset):
                         # tids = prevs... + [id], so the current interferogram is always last
                         mask_data = (masks_per_t[-1] > 0).astype(np.float32)  # (N,H,W)
 
-                    # one constant plane per PREVIOUS timestep (k_prevs of them; the current
-                    # timestep is always real so it needs no validity flag) marking real (1) vs
-                    # repeat-padded (0) history, so the model can learn to discount padded slots
-                    if getattr(args, 'add_temporal_validity', False):
-                        N = image_data.shape[1]
-                        V_temporal = np.stack([np.full((N, H, W), v, dtype=np.float32) for v in valid_t[:-1]], axis=0)
-                        image_data = np.concatenate([image_data, V_temporal], axis=0).astype(np.float32)
-
                 elif args.nonz_only:
                     mask_nz, image_nz = [], []
                     for p in range(image_data.shape[0]):
@@ -531,6 +520,7 @@ class SubsiDataset(Dataset):
 
             self.image_data.append(image_data)
             self.mask_data.append(mask_data)
+            self.valid_t.append(valid_t[:-1] if self.temporal else [])
             self.index_map.extend([[i, j] for j in range(len_examples)])
             logging.info('loaded patch for intf {}'.format(id))
 
@@ -614,6 +604,15 @@ class SubsiDataset(Dataset):
         # Preprocess
         img = self.preprocess(self.mask_values, img, 0, n_base_channels=self.n_base_channels)  # keeps shape; (T,H,W) or (H,W)
         msk = self.preprocess(self.mask_values, msk, 1)  # -> (H,W) labels
+
+        # temporal-validity planes: broadcast this id's k_prevs scalars (constant across all its
+        # patches) to full (H,W) here, per-sample, instead of storing them pre-broadcast for
+        # every patch in __init__ -- same result, far less memory held for the whole dataset.
+        if self.add_temporal_validity:
+            H, W = img.shape[-2:]
+            valid_t = self.valid_t[intf_idx]
+            V_temporal = np.stack([np.full((H, W), v, dtype=np.float32) for v in valid_t], axis=0)
+            img = np.concatenate([img, V_temporal], axis=0).astype(np.float32)
         # if self.dataset != 'train':
         #     T = img.shape[0];
         #     fig, ax = plt.subplots(1, T + 1, figsize=(2 * (T + 1), 2))
